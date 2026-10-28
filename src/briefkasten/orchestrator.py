@@ -14,7 +14,17 @@ from __future__ import annotations
 import secrets
 from datetime import date, datetime
 
-from .agents import CriticAgent, DrafterAgent, ExplainerAgent, ExtractorAgent, SupervisorAgent, TriageAgent, Workspace
+from .agents import (
+    CriticAgent,
+    DrafterAgent,
+    ExplainerAgent,
+    ExtractorAgent,
+    LiveTrace,
+    Progress,
+    SupervisorAgent,
+    TriageAgent,
+    Workspace,
+)
 from .config import Settings
 from .documents import load_document
 from .llm import LLMRouter
@@ -51,10 +61,10 @@ class Briefkasten:
 
     # ------------------------------------------------------------------ run
 
-    def process_file(self, data: bytes, filename: str, **kwargs) -> RunState:
-        intake_trace: list[TraceEvent] = []
+    def process_file(self, data: bytes, filename: str, progress: Progress | None = None, **kwargs) -> RunState:
+        intake_trace: list[TraceEvent] = LiveTrace(progress=progress)
         text = load_document(data, filename, self.router, intake_trace)
-        return self.process(text, source_name=filename, extra_trace=intake_trace, **kwargs)
+        return self.process(text, source_name=filename, extra_trace=intake_trace, progress=progress, **kwargs)
 
     def process(
         self,
@@ -65,7 +75,9 @@ class Briefkasten:
         reply_intent: str | None = None,
         today: date | None = None,
         extra_trace: list[TraceEvent] | None = None,
+        progress: Progress | None = None,
     ) -> RunState:
+        """Run the agents on a letter. `progress`, if given, is told about every agent step as it happens."""
         if reply_intent and reply_intent not in REPLY_INTENTS:
             raise ValueError(f"Unknown intent '{reply_intent}'. Choose from: {', '.join(REPLY_INTENTS)}")
         if not text.strip():
@@ -85,6 +97,7 @@ class Briefkasten:
             redactions=redacted.mapping,
             trace=list(extra_trace or []),
         )
+        state.trace = LiveTrace(state.trace, progress)  # same list type to pydantic, plus live reporting
         ws = Workspace(state)
         try:
             report = self.supervisor.run(ws, state.trace)

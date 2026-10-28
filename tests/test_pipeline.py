@@ -328,3 +328,32 @@ def test_provider_rejected_tool_call_is_fed_back(settings):
     first = steps(state, "triage")[0]
     assert "rejected by the API" in first.note
     assert "Your tool call was rejected: `/sender_type`" in [c["prompt"] for c in llm.calls if c["agent"] == "triage"][0]
+
+
+def test_progress_reports_every_step_live(settings):
+    class Recorder:
+        def __init__(self):
+            self.events = []
+
+        def started(self, agent, step):
+            self.events.append(("started", agent, step))
+
+        def decided(self, event):
+            self.events.append(("decided", event.agent, tuple(event.tool_calls)))
+
+        def problem(self, event):
+            self.events.append(("problem", event.agent, event.note))
+
+    rec = Recorder()
+    letter, intent, router = load_replay("vermieter_nebenkosten")
+    bk = Briefkasten(router, settings)
+    state = bk.process(letter, reply_intent=intent, today=TODAY, progress=rec)
+
+    decided = [e for e in rec.events if e[0] == "decided"]
+    assert len(decided) == len(state.trace)  # one live report per traced step
+    assert rec.events[:2] == [("started", "supervisor", 1), ("decided", "supervisor", ("triage_letter",))]
+    # The supervisor's decision is reported before the specialist it delegated to starts.
+    assert rec.events.index(("decided", "supervisor", ("triage_letter",))) < rec.events.index(("started", "triage", 1))
+    problems = [e for e in rec.events if e[0] == "problem"]
+    assert len(problems) == 1 and problems[0][1] == "extractor" and "283.47" in problems[0][2]
+    assert bk.store.load(state.run_id).trace == state.trace  # the live trace saves like a plain list

@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -40,6 +40,28 @@ REACT_RULES = (
 
 class AgentError(RuntimeError):
     pass
+
+
+class Progress(Protocol):
+    """Live view of a run: called from agent threads as each step happens."""
+
+    def started(self, agent: str, step: int) -> None: ...
+    def decided(self, event: TraceEvent) -> None: ...  # the model answered: thought + tools chosen
+    def problem(self, event: TraceEvent) -> None: ...  # event.note explains what went wrong
+
+
+class LiveTrace(list):
+    """A trace list that also reports each step to a Progress listener."""
+
+    def __init__(self, items=(), progress: Progress | None = None):
+        super().__init__(items)
+        self.progress = progress
+
+
+def _report(trace: list, method: str, *args) -> None:
+    progress = getattr(trace, "progress", None)
+    if progress is not None:
+        getattr(progress, method)(*args)
 
 
 class ToolError(Exception):
@@ -134,6 +156,7 @@ class Agent:
         idle = 0
 
         for step in range(1, self.max_steps + 1):
+            _report(trace, "started", self.name, step)
             t0 = time.perf_counter()
             res = llm.chat(system=full_system, messages=messages, tools=specs, agent=self.name, max_tokens=self.max_tokens)
             event = TraceEvent(
@@ -147,9 +170,11 @@ class Agent:
                 thought=(res.text.strip() or res.reasoning.strip())[:500] or None,
             )
             trace.append(event)
+            _report(trace, "decided", event)
             if res.rejected:
                 # The provider refused the tool call before we saw it; the reason is the observation.
                 event.note = f"tool call rejected by the API: {res.rejected}"[:300]
+                _report(trace, "problem", event)
                 messages.append(Message("user", text=f"Your tool call was rejected: {res.rejected}\nFix it and call the tool again."))
                 continue
             messages.append(Message("assistant", text=res.text, tool_calls=res.tool_calls))
@@ -157,6 +182,7 @@ class Agent:
             if not res.tool_calls:
                 idle += 1
                 event.note = "no tool call"
+                _report(trace, "problem", event)
                 if idle >= 2:
                     raise AgentError(f"{self.name} agent stopped twice without calling a tool")
                 messages.append(Message("user", text="You must act through tools. When you are done, call `submit`."))
@@ -167,6 +193,7 @@ class Agent:
             errors = [f"{c.name}: {' '.join(r.content.split())}" for c, r in zip(res.tool_calls, results) if r.is_error]
             if errors:
                 event.note = "; ".join(errors)[:300]
+                _report(trace, "problem", event)
             messages.append(Message("tool", results=results))
             if submitted:
                 return submitted[-1]
@@ -210,6 +237,7 @@ class Agent:
 
     def ask_text(self, *, system: str, prompt: str, trace: list[TraceEvent], images: list[Image] | None = None) -> str:
         llm = self.router.for_tier(self.tier)
+        _report(trace, "started", self.name, 1)
         t0 = time.perf_counter()
         res = llm.complete(system=system, prompt=prompt, agent=self.name, max_tokens=self.max_tokens, images=images)
         trace.append(
@@ -221,4 +249,5 @@ class Agent:
                 output_tokens=res.output_tokens,
             )
         )
+        _report(trace, "decided", trace[-1])
         return res.text

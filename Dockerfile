@@ -1,7 +1,9 @@
 FROM python:3.12-slim
 
 WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 BRIEFKASTEN_DATA_DIR=/data
+# Public-safe by default: sample letters only, no uploads, nothing stored. For a private full deployment
+# behind your own login, run with -e BRIEFKASTEN_DEMO_ONLY=0 and add --allow-public to the command.
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 BRIEFKASTEN_DATA_DIR=/data BRIEFKASTEN_DEMO_ONLY=1
 
 COPY pyproject.toml README.md ./
 COPY src ./src

@@ -24,7 +24,9 @@ def load_dotenv(path: str | Path = ".env") -> None:
 # provider -> (smart, fast, vision) defaults; vision None means the smart model reads images
 DEFAULT_MODELS: dict[str, tuple[str, str, str | None]] = {
     "anthropic": ("claude-sonnet-5-5", "claude-haiku-5-5", None),
-    "groq": ("openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"),  # gpt-oss is text-only
+    # Qwen for every role: parallel tool calls, reliable tool-call format, and vision. gpt-oss on Groq can't make
+    # parallel tool calls and often calls a non-existent "json" tool, which stalls the agent loops.
+    "groq": ("qwen/qwen3.8-27b", "qwen/qwen3.8-27b", "qwen/qwen3.8-27b"),
     "openai": ("llama3.1", "llama3.1", None),
 }
 
@@ -60,6 +62,9 @@ class Settings:
     sender_name: str = ""
     sender_address: str = ""
     max_extraction_retries: int = 1
+    demo_only: bool = False  # public demo: sample letters only, no uploads, nothing stored on disk
+    imprint_url: str = ""  # Impressum, linked in the web app footer
+    privacy_url: str = ""  # privacy policy (Datenschutzerklärung), linked in the footer
 
     @classmethod
     def from_env(cls, **overrides) -> "Settings":
@@ -88,6 +93,9 @@ class Settings:
             redact_terms=_split_terms(env.get("BRIEFKASTEN_REDACT_TERMS", "")),
             sender_name=env.get("BRIEFKASTEN_SENDER_NAME", ""),
             sender_address=env.get("BRIEFKASTEN_SENDER_ADDRESS", "").replace("\\n", "\n"),
+            demo_only=env.get("BRIEFKASTEN_DEMO_ONLY", "").strip().lower() in ("1", "true", "yes", "on"),
+            imprint_url=env.get("BRIEFKASTEN_IMPRINT_URL", ""),
+            privacy_url=env.get("BRIEFKASTEN_PRIVACY_URL", ""),
         )
         for key, value in overrides.items():
             if value is not None:

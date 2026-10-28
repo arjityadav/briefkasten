@@ -121,18 +121,31 @@ With a real model:
 
 ```bash
 cp .env.template .env   # add GROQ_API_KEY (or ANTHROPIC_API_KEY), your Bundesland and names to mask
-briefkasten process path/to/letter.pdf --received 2026-10-16 -v
+briefkasten process path/to/letter.pdf --received 2026-10-16 -v   # watch the agents work live
 briefkasten process steuerbescheid.pdf --intent file_objection
 briefkasten approve <run-id>             # opens the draft in your editor
 briefkasten export <run-id> -o einspruch.txt
 briefkasten serve                        # web app on http://127.0.0.1:8000
 ```
 
+While a run is in progress, `process` and `demo` stream each agent step to the terminal: who is thinking,
+the reasoning it wrote, which tools it called, rejections it has to fix, and rate-limit waits. The live view goes
+to stderr, so `--json` output stays clean; `-q` hides it.
+
+```text
+ 0:00  supervisor  → explain_letter, extract_facts  0.6s · 952→32 tok
+                   “Explaining and extracting are independent, so both run in parallel.”
+ 0:01    extractor   → submit  1.2s · 831→122 tok
+ 0:01    extractor   ✗ submit: Rejected. Fix these problems and call submit again: - amounts[0]: amount 283.47 …
+ 0:02    extractor   → find_in_letter  0.4s · 876→31 tok
+ 0:09  ⏳ rate limited, retrying in 7s (attempt 2 of 4)
+```
+
 Providers (`BRIEFKASTEN_PROVIDER`):
 
 | Provider | Smart / fast / vision defaults | Notes |
 |---|---|---|
-| `groq` (default in `.env.template`) | `openai/gpt-oss-120b` / `openai/gpt-oss-20b` / `qwen/qwen3.8-27b` | Key from console.groq.com. gpt-oss runs with `reasoning_effort=low` and extra token headroom; its reasoning shows up in the trace. Malformed tool calls (`tool_use_failed`) are retried by the agent loop, and 429s honour `retry-after` |
+| `groq` (default in `.env.template`) | `qwen/qwen3.8-27b` for all three | Key from console.groq.com. Qwen makes parallel tool calls and reads images. gpt-oss is not recommended here: on Groq it can't call tools in parallel and often calls a non-existent `json` tool, which stalls the agents. Rejected tool calls are fed back to the agent; 429s wait out the token-per-minute limit (free-tier runs take several minutes) |
 | `anthropic` | `claude-sonnet-5-5` / `claude-haiku-5-5` / smart model | |
 | `openai` | `llama3.1` | Any OpenAI-compatible server, Ollama by default |
 
@@ -162,7 +175,30 @@ worked out", editable draft with approve/reject, download). Endpoints:
 | `POST` | `/api/runs/{id}/reject` | `{ "reason": "..." }` |
 | `GET` | `/api/runs/{id}/letter` | approved reply as a text letter |
 
-Docker: `docker build -t briefkasten . && docker run -p 8000:8000 --env-file .env briefkasten`
+### Hosting a public demo
+
+The full app has no user accounts, so `briefkasten serve` refuses to listen on a non-local address unless
+demo-only mode is on (or you pass `--allow-public` because it sits behind your own login).
+
+```bash
+BRIEFKASTEN_DEMO_ONLY=1 \
+BRIEFKASTEN_IMPRINT_URL=https://example.org/impressum \
+BRIEFKASTEN_PRIVACY_URL=https://example.org/datenschutz \
+briefkasten serve --host 0.0.0.0
+```
+
+In demo-only mode the site only replays the fictional sample letters: uploads are refused before the request
+body is read, no model API key is needed, runs live in memory for an hour and never touch the disk, visitors
+can't list each other's runs, and the page says that its content is AI-generated. The Docker image runs in this
+mode by default:
+
+```bash
+docker build -t briefkasten . && docker run -p 8000:8000 briefkasten
+```
+
+Letting the public analyse *real* letters raises legal questions (Rechtsdienstleistungsgesetz, Steuerberatungsgesetz,
+GDPR for tax and health data sent to a US model provider) that need a lawyer, and the app would need accounts and
+encrypted, expiring storage first.
 
 ## Testing and evaluation
 
@@ -204,7 +240,7 @@ tests/
   (use a local model for scans if that matters).
 - Agents need a model with native tool calling. Most current local models (Qwen 2.5, Llama 3.1+) support it
   through Ollama; very small models may wander, which the step limits and budgets contain but cannot fix.
-- Real-model runs make more calls than a fixed pipeline (roughly 12-16 steps per letter instead of 6).
+- Real-model runs make more calls than a fixed pipeline (roughly 15-20 steps and ~55k tokens per letter instead of 6 calls).
 - The eval set is small (four letters). Growing it with real, anonymised letters is the most valuable next step.
 
 ## Roadmap

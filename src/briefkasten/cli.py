@@ -41,6 +41,19 @@ def _app(need_llm: bool = True, **overrides) -> Briefkasten:
         raise click.ClickException(f"{e}\nTip: try `briefkasten demo` to see the pipeline without a key.") from None
 
 
+def _live(app: Briefkasten, label: str | None = None):
+    from .live import ConsoleProgress, attach_http_logging
+
+    progress = ConsoleProgress()
+    attach_http_logging(progress)
+    r = app.router
+    models = label or (
+        f"{app.settings.provider} · smart {r.for_tier('smart').model} · fast {r.for_tier('fast').model}"
+    )
+    progress.info(f"live agent view ({models}); -q to hide")
+    return progress
+
+
 state_opt = click.option("--state", "bundesland", type=click.Choice(list(STATES), case_sensitive=False), help="Bundesland for public holidays (default: BRIEFKASTEN_STATE or BW)")
 
 
@@ -57,10 +70,14 @@ def main() -> None:
 @state_opt
 @click.option("--json", "as_json", is_flag=True, help="Print the run as JSON")
 @click.option("-v", "--verbose", is_flag=True, help="Show every calculation step and the agent trace")
-def process(file: Path, received, intent, bundesland, as_json, verbose) -> None:
+@click.option("-q", "--quiet", is_flag=True, help="Don't show agent steps live while the run is in progress")
+def process(file: Path, received, intent, bundesland, as_json, verbose, quiet) -> None:
     """Analyse a letter (.txt, .pdf, .png, .jpg)."""
     app = _app(state=bundesland.upper() if bundesland else None)
-    state = app.process_file(file.read_bytes(), file.name, received_on=received, reply_intent=intent)
+    progress = None if quiet else _live(app)
+    state = app.process_file(file.read_bytes(), file.name, received_on=received, reply_intent=intent, progress=progress)
+    if progress:
+        progress.info(f"run finished: {state.status}\n")
     click.echo(json.dumps(state.public_view(), indent=2, ensure_ascii=False) if as_json else render(state, verbose))
     if state.status == "awaiting_approval" and not as_json:
         click.echo(f"\nNext: briefkasten approve {state.run_id}")
@@ -71,7 +88,8 @@ def process(file: Path, received, intent, bundesland, as_json, verbose) -> None:
 @main.command()
 @click.argument("name", required=False, default="finanzamt_bescheid")
 @click.option("-v", "--verbose", is_flag=True)
-def demo(name: str, verbose: bool) -> None:
+@click.option("-q", "--quiet", is_flag=True, help="Don't show agent steps live")
+def demo(name: str, verbose: bool, quiet: bool) -> None:
     """Run the full pipeline offline with recorded agent replies (no API key needed)."""
     from .demo import DEMO_REDACT_TERMS, available_replays, load_replay
 
@@ -80,7 +98,10 @@ def demo(name: str, verbose: bool) -> None:
     letter, intent, router = load_replay(name)
     settings = Settings.from_env(redact_terms=DEMO_REDACT_TERMS)
     app = Briefkasten(router, settings)
-    state = app.process(letter, source_name=f"{name}.txt", reply_intent=intent)
+    progress = None if quiet else _live(app, "recorded model turns, tools run live")
+    state = app.process(letter, source_name=f"{name}.txt", reply_intent=intent, progress=progress)
+    if progress:
+        progress.info(f"run finished: {state.status}\n")
     click.echo(click.style(f"[demo] replaying recorded agent outputs for {name}; everything else runs live\n", fg="cyan"))
     click.echo(render(state, verbose))
     click.echo(click.style(f"\n[demo] {len(state.redactions)} personal identifiers were masked before any model saw the letter.", fg="cyan"))
@@ -191,15 +212,38 @@ def deadline(letter_date, months, weeks, days, start, received, electronic, bund
     click.echo(click.style(f"Deadline: {res.due_date:%A, %d.%m.%Y}", bold=True) + f" ({res.days_left} days from today)")
 
 
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
 @main.command()
 @click.option("--host", default="127.0.0.1")
 @click.option("--port", default=8000, type=int)
-def serve(host: str, port: int) -> None:
-    """Start the web app and API."""
+@click.option("--allow-public", is_flag=True, help="Serve the full app (uploads, stored runs) on a non-local address")
+def serve(host: str, port: int, allow_public: bool) -> None:
+    """Start the web app and API.
+
+    The full app has no user accounts: anyone who can reach it can read every run. Off this machine,
+    serve it with BRIEFKASTEN_DEMO_ONLY=1 (sample letters only), or behind your own login with --allow-public.
+    """
     try:
         import uvicorn
     except ImportError:
         raise click.ClickException("Install the web extra: pip install 'briefkasten[web]'") from None
+    s = Settings.from_env()
+    if host not in LOCAL_HOSTS and not s.demo_only and not allow_public:
+        raise click.ClickException(
+            f"Refusing to serve the full app on {host}: it has no login, so anyone who can reach it could read "
+            "every letter analysed here.\nSet BRIEFKASTEN_DEMO_ONLY=1 for a public demo (sample letters only), "
+            "or pass --allow-public if it sits behind your own authentication."
+        )
+    if s.demo_only:
+        click.echo("Demo-only mode: sample letters only, uploads refused, runs kept in memory for an hour.")
+        if host not in LOCAL_HOSTS and not (s.imprint_url and s.privacy_url):
+            click.echo(
+                click.style("Note: ", fg="yellow")
+                + "a public site in Germany needs an Impressum and a privacy policy. "
+                "Set BRIEFKASTEN_IMPRINT_URL and BRIEFKASTEN_PRIVACY_URL to link them in the footer."
+            )
     uvicorn.run("briefkasten.api:app", host=host, port=port)
 
 

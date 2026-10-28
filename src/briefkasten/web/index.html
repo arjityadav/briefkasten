@@ -100,7 +100,9 @@
   </aside>
   <section id="result"><div class="card empty">Upload a letter to see what it means, what you must do, and by when.</div></section>
 </main>
-<footer>Briefkasten explains letters; it is not legal or tax advice. Personal identifiers are masked before any model sees the text.</footer>
+<footer>The explanations, deadlines checks and reply drafts on this page are produced by AI agents and can be wrong.
+  Briefkasten explains letters; it is not legal or tax advice. Personal identifiers are masked before any model sees the text.
+  <span id="legal"></span></footer>
 
 <script>
 const $ = (s) => document.querySelector(s);
@@ -109,6 +111,7 @@ const fmtDate = (iso) => iso ? new Date(iso + "T12:00:00").toLocaleDateString("d
 const eur = (n) => n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 const URG = { overdue: "OVERDUE", urgent: "URGENT", soon: "DUE SOON", relaxed: "NO RUSH", none: "NO DEADLINE" };
 let current = null;
+let demoOnly = false;
 
 async function api(path, opts = {}) {
   const r = await fetch(path, opts);
@@ -123,6 +126,17 @@ async function init() {
   $("#intent").innerHTML += Object.entries(meta.intents).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
   $("#demos").innerHTML = meta.demos.map((d) => `<button class="secondary" type="button" data-demo="${d}">${esc(d.replace(/_/g, " "))}</button>`).join("");
   $("#demos").onclick = async (e) => { const d = e.target.dataset.demo; if (d) await run(() => api(`/api/demo/${d}`, { method: "POST" })); };
+  const links = [[meta.imprint_url, "Impressum"], [meta.privacy_url, "Datenschutz"]].filter(([u]) => u);
+  $("#legal").innerHTML = links.length ? "<br>" + links.map(([u, t]) => `<a href="${esc(u)}">${t}</a>`).join(" · ") : "";
+  demoOnly = meta.demo_only;
+  if (demoOnly) {
+    $("#form").remove();
+    document.querySelector(".runs").remove();
+    $("#result").innerHTML = `<div class="card empty"><strong>Public demo.</strong> Pick a sample letter on the left. All letters are fictional;
+      the agents' decisions were recorded, and every tool, check and deadline calculation runs live.<br>
+      Uploading your own letters is switched off here. Please don't type real personal details into the draft.</div>`;
+    return;
+  }
   loadRuns();
 }
 
@@ -155,7 +169,7 @@ async function run(fn) {
   const btns = document.querySelectorAll("button"); btns.forEach((b) => (b.disabled = true));
   $("#formError").innerHTML = "";
   $("#result").innerHTML = `<div class="card empty">Agents at work: triage, explanation, extraction, verification…</div>`;
-  try { show(await fn()); loadRuns(); }
+  try { show(await fn()); if (!demoOnly) loadRuns(); }
   catch (err) { $("#result").innerHTML = ""; $("#formError").innerHTML = `<div class="error-box">${esc(err.message)}</div>`; }
   finally { btns.forEach((b) => (b.disabled = false)); }
 }

@@ -1,4 +1,9 @@
-"""HTTP API and web UI (FastAPI)."""
+"""HTTP API and web UI (FastAPI).
+
+With BRIEFKASTEN_DEMO_ONLY=1 the app is safe to host publicly: it only replays the fictional
+sample letters, accepts no uploads, needs no model API key, keeps runs in memory for an hour,
+and never lists one visitor's runs to another.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +12,8 @@ from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from .config import Settings
@@ -17,7 +22,7 @@ from .documents import UnsupportedDocument
 from .llm import LLMError, build_router
 from .models import REPLY_INTENTS
 from .orchestrator import ApprovalError, Briefkasten
-from .store import RunNotFound, RunStore
+from .store import MemoryRunStore, RunNotFound, RunStore
 from .tools.holidays_de import STATES
 
 MAX_UPLOAD = 15 * 1024 * 1024
@@ -31,11 +36,18 @@ def settings() -> Settings:
     return Settings.from_env()
 
 
-def store() -> RunStore:
-    return RunStore(settings().data_dir)
+@lru_cache
+def _memory_store() -> MemoryRunStore:
+    return MemoryRunStore()
+
+
+def store() -> RunStore | MemoryRunStore:
+    return _memory_store() if settings().demo_only else RunStore(settings().data_dir)
 
 
 def pipeline() -> Briefkasten:
+    if settings().demo_only:
+        raise HTTPException(403, DEMO_REFUSAL)
     try:
         return Briefkasten(build_router(settings()), settings())
     except LLMError as e:
@@ -43,7 +55,18 @@ def pipeline() -> Briefkasten:
 
 
 def offline() -> Briefkasten:
-    return Briefkasten(None, settings())  # type: ignore[arg-type]  # approval/export never call a model
+    return Briefkasten(None, settings(), store())  # type: ignore[arg-type]  # approval/export never call a model
+
+
+DEMO_REFUSAL = "This public demo only runs the sample letters. Run Briefkasten yourself to analyse your own mail."
+
+
+@app.middleware("http")
+async def demo_only_guard(request: Request, call_next):
+    """In demo-only mode, refuse uploads before the request body is read, so no real letter is ever received."""
+    if settings().demo_only and request.method == "POST" and request.url.path.rstrip("/") == "/api/runs":
+        return JSONResponse({"detail": DEMO_REFUSAL}, status_code=403)
+    return await call_next(request)
 
 
 class ApproveBody(BaseModel):
@@ -67,9 +90,12 @@ def meta() -> dict:
         "intents": REPLY_INTENTS,
         "states": STATES,
         "default_state": s.state,
-        "provider": s.provider,
-        "models": {"smart": s.model, "fast": s.model_fast},
+        "provider": "recorded replays" if s.demo_only else s.provider,
+        "models": {} if s.demo_only else {"smart": s.model, "fast": s.model_fast},
         "demos": available_replays(),
+        "demo_only": s.demo_only,
+        "imprint_url": s.imprint_url,
+        "privacy_url": s.privacy_url,
     }
 
 
@@ -81,9 +107,9 @@ async def create_run(
     intent: str | None = Form(None),
     bundesland: str | None = Form(None),
 ) -> dict:
+    bk = pipeline()  # refuses first in demo-only mode, before reading any upload
     if intent and intent not in REPLY_INTENTS:
         raise HTTPException(422, f"Unknown intent '{intent}'")
-    bk = pipeline()
     if bundesland:
         if bundesland.upper() not in STATES:
             raise HTTPException(422, f"Unknown Bundesland '{bundesland}'")
@@ -112,7 +138,7 @@ def run_demo(name: str) -> dict:
     if name not in available_replays():
         raise HTTPException(404, f"Unknown demo. Available: {', '.join(available_replays())}")
     letter, intent, router = load_replay(name)
-    bk = Briefkasten(router, replace(settings(), redact_terms=DEMO_REDACT_TERMS))
+    bk = Briefkasten(router, replace(settings(), redact_terms=DEMO_REDACT_TERMS), store())
     return bk.process(letter, source_name=f"{name}.txt", reply_intent=intent).public_view()
 
 

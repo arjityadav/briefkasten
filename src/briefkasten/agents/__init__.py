@@ -1,4 +1,4 @@
-from .base import AgentError
+from .base import AgentError, LiveTrace, Progress
 from .drafter import DrafterAgent
 from .explainer import ExplainerAgent
 from .extractor import DeadlineContext, ExtractionRun, ExtractorAgent
@@ -15,6 +15,8 @@ __all__ = [
     "ExplainerAgent",
     "ExtractionRun",
     "ExtractorAgent",
+    "LiveTrace",
+    "Progress",
     "SupervisorAgent",
     "TranscriberAgent",
     "TriageAgent",

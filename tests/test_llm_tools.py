@@ -80,9 +80,7 @@ def test_groq_router_uses_groq_defaults(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
     monkeypatch.setattr("briefkasten.config.load_dotenv", lambda *a, **k: None)
     router = build_router(Settings.from_env())
-    assert router.for_tier("smart").model == "openai/gpt-oss-120b"
-    assert router.for_tier("fast").model == "openai/gpt-oss-20b"
-    assert router.for_tier("vision").model == "qwen/qwen3.8-27b"
+    assert {router.for_tier(t).model for t in ("smart", "fast", "vision")} == {"qwen/qwen3.8-27b"}
     assert router.smart._url == "https://api.groq.com/openai/v1/chat/completions"
 
 
@@ -159,7 +157,7 @@ def test_groq_via_openai_variables(monkeypatch):
     monkeypatch.setenv("OPENAI_MODEL", "openai/gpt-oss-120b")
     monkeypatch.setattr("briefkasten.config.load_dotenv", lambda *a, **k: None)
     s = Settings.from_env()
-    assert (s.provider, s.groq_api_key, s.model, s.model_fast) == ("groq", "gsk_test", "openai/gpt-oss-120b", "openai/gpt-oss-20b")
+    assert (s.provider, s.groq_api_key, s.model, s.model_fast) == ("groq", "gsk_test", "openai/gpt-oss-120b", "qwen/qwen3.8-27b")
 
 
 def test_openai_model_variable_for_local_servers(monkeypatch):
@@ -178,3 +176,45 @@ def test_openai_model_variable_for_local_servers(monkeypatch):
 def test_rejection_message_survives_truncated_body():
     err = 'HTTP 400 from x: {"error":{"message":"Tool call validation failed: attempted to call tool \'json\'","type":"invalid_request_error","failed_generation":"{\\"summ'
     assert openai_mod._tool_call_rejection(err) == "Tool call validation failed: attempted to call tool 'json'"
+
+
+def test_rate_limit_waits_are_logged(monkeypatch, caplog):
+    import io
+    import urllib.error
+
+    from briefkasten.llm import http
+
+    calls = {"n": 0}
+
+    def fake_urlopen(req, timeout, context):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {"retry-after": "0.5"}, io.BytesIO(b"{}"))
+        return io.BytesIO(b'{"ok": true}')
+
+    monkeypatch.setattr(http.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(http.time, "sleep", lambda s: None)
+    logger = http.log
+    monkeypatch.setattr(logger, "propagate", True)
+    with caplog.at_level("WARNING", logger="briefkasten.http"):
+        assert http.post_json("https://x", {}, {}) == {"ok": True}
+    assert "rate limited, retrying in" in caplog.text and "wait 1 of 8" in caplog.text
+
+
+def test_rate_limits_have_their_own_longer_budget(monkeypatch):
+    import io
+    import urllib.error
+
+    from briefkasten.llm import http
+
+    calls = {"n": 0}
+
+    def fake_urlopen(req, timeout, context):
+        calls["n"] += 1
+        if calls["n"] <= 6:  # more 429s than the normal retry budget of 3
+            raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {"retry-after": "1"}, io.BytesIO(b"{}"))
+        return io.BytesIO(b'{"ok": true}')
+
+    monkeypatch.setattr(http.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(http.time, "sleep", lambda s: None)
+    assert http.post_json("https://x", {}, {}) == {"ok": True} and calls["n"] == 7
