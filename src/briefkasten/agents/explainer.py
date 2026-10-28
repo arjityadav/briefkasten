@@ -10,8 +10,11 @@ Rules:
 - Only state what the letter says or what directly follows from it. Do not invent amounts, dates or consequences.
   Check figures you are unsure about with find_in_letter.
 - Say plainly what the reader has to do and what happens if they do nothing, when the letter says so.
-- Mention useful general facts only when they are standard and certain (for example: filing an objection
-  to a tax decision does not by itself postpone the payment).
+- Mention useful general facts only when they are standard and certain, for example: filing an objection
+  to a tax decision does not by itself postpone the payment; after an employer's dismissal, a lawsuit against it
+  (Kündigungsschutzklage) must be filed within 3 weeks of receiving it (§ 4 KSchG); for a Mahnbescheid or
+  Bußgeldbescheid the deadline runs from the delivery date on the yellow envelope.
+- The document may also be a contract, payslip, invoice or form: explain what it is and what matters in it.
 - Glossary: up to 6 German words from the letter that the reader will meet again.
 - This is not legal advice; do not tell the reader they will win or lose a dispute.
 

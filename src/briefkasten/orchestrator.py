@@ -15,18 +15,21 @@ import secrets
 from datetime import date, datetime
 
 from .agents import (
+    ContractAgent,
     CriticAgent,
     DrafterAgent,
     ExplainerAgent,
     ExtractorAgent,
+    FormAgent,
     LiveTrace,
+    PayslipAgent,
     Progress,
     SupervisorAgent,
     TriageAgent,
     Workspace,
 )
 from .config import Settings
-from .documents import load_document
+from .documents import load_documents
 from .llm import LLMRouter
 from .models import REPLY_INTENTS, RunState, TraceEvent, Verification
 from .store import RunStore
@@ -56,15 +59,23 @@ class Briefkasten:
             extractor=ExtractorAgent(router),
             critic=CriticAgent(router),
             drafter=DrafterAgent(router),
+            payslip=PayslipAgent(router),
+            contract=ContractAgent(router),
+            form=FormAgent(router),
             max_extraction_retries=settings.max_extraction_retries,
         )
 
     # ------------------------------------------------------------------ run
 
     def process_file(self, data: bytes, filename: str, progress: Progress | None = None, **kwargs) -> RunState:
+        return self.process_files([(data, filename)], progress=progress, **kwargs)
+
+    def process_files(self, files: list[tuple[bytes, str]], progress: Progress | None = None, **kwargs) -> RunState:
+        """Several files that make up one document, e.g. one photo per page, in order."""
         intake_trace: list[TraceEvent] = LiveTrace(progress=progress)
-        text = load_document(data, filename, self.router, intake_trace)
-        return self.process(text, source_name=filename, extra_trace=intake_trace, progress=progress, **kwargs)
+        text = load_documents(files, self.router, intake_trace)
+        name = files[0][1] if len(files) == 1 else f"{files[0][1]} (+{len(files) - 1} more)"
+        return self.process(text, source_name=name, extra_trace=intake_trace, progress=progress, **kwargs)
 
     def process(
         self,
@@ -107,12 +118,12 @@ class Briefkasten:
             state.status = "failed"
             state.error = f"{type(e).__name__}: {e}"
         finally:
-            if state.extraction:
-                issues = ws.grounding + ws.critic
+            if state.extraction or state.analysis:
+                issues = ws.grounding + ws.analysis_issues + ws.critic
                 state.verification = Verification(
                     passed=not any(i.severity == "error" for i in issues),
                     issues=issues,
-                    quotes_checked=ws.quotes_checked,
+                    quotes_checked=ws.quotes_checked + ws.analysis_quotes,
                     extraction_rounds=ws.extraction_rounds,
                     repaired=ws.repaired,
                 )

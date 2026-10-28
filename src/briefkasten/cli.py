@@ -64,18 +64,28 @@ def main() -> None:
 
 
 @main.command()
-@click.argument("file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("files", nargs=-1, required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--received", callback=_date, help="Date you received the letter (improves deadline maths)")
 @click.option("--intent", type=click.Choice(list(REPLY_INTENTS)), help="Ask for a reply draft with this intent")
 @state_opt
 @click.option("--json", "as_json", is_flag=True, help="Print the run as JSON")
 @click.option("-v", "--verbose", is_flag=True, help="Show every calculation step and the agent trace")
 @click.option("-q", "--quiet", is_flag=True, help="Don't show agent steps live while the run is in progress")
-def process(file: Path, received, intent, bundesland, as_json, verbose, quiet) -> None:
-    """Analyse a letter (.txt, .pdf, .png, .jpg)."""
+def process(files: tuple[Path, ...], received, intent, bundesland, as_json, verbose, quiet) -> None:
+    """Analyse a document: .pdf .docx .txt .eml or photos (.jpg .png .heic ...).
+
+    Give several files to read them as one document, e.g. one photo per page: page1.jpg page2.jpg
+    """
     app = _app(state=bundesland.upper() if bundesland else None)
     progress = None if quiet else _live(app)
-    state = app.process_file(file.read_bytes(), file.name, received_on=received, reply_intent=intent, progress=progress)
+    from .documents import UnsupportedDocument
+
+    try:
+        state = app.process_files(
+            [(f.read_bytes(), f.name) for f in files], received_on=received, reply_intent=intent, progress=progress
+        )
+    except UnsupportedDocument as e:
+        raise click.ClickException(str(e)) from None
     if progress:
         progress.info(f"run finished: {state.status}\n")
     click.echo(json.dumps(state.public_view(), indent=2, ensure_ascii=False) if as_json else render(state, verbose))

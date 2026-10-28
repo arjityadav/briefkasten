@@ -20,6 +20,15 @@ Deadline rules:
   delivery=electronic only if the letter says it was sent electronically.
 - A period starting when a private letter was received ("innerhalb von 30 Tagen nach Erhalt", "nach Zugang")
   -> kind=after_receipt.
+- A period starting on formal delivery (Zustellung): Mahnbescheid (Widerspruch within 2 weeks), Vollstreckungsbescheid
+  (Einspruch within 2 weeks), Bußgeldbescheid (Einspruch within 2 weeks), court documents, anything "zugestellt" with a
+  Zustellungsurkunde -> kind=after_service with the period. Never use after_notification for these.
+- A notice period before a date, typical in contracts ("Kündigungsfrist 3 Monate zum Ende der Mindestlaufzeit",
+  "kann mit einer Frist von einem Monat zum Monatsende gekündigt werden") -> kind=before_date with the period and
+  reference_date = the end date it counts back from. If the end date must be worked out (e.g. "24 Monate ab
+  01.03.2025"), work it out and mention that in purpose. If there is no fixed end date, skip the deadline.
+- Widerspruch periods of Jobcenter, Krankenkasse, Familienkasse and Ausländerbehörde decisions sent by post are
+  after_notification. Some Ausländerbehörde decisions allow only a lawsuit (Klage) instead: still right_to_object.
 - deadline.kind: payment for money, right_to_object for Einspruch/Widerspruch/Einwendungen,
   appointment for dates to show up, action_required for everything else.
 

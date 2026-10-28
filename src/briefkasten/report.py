@@ -6,7 +6,7 @@ import textwrap
 
 import click
 
-from .models import RunState
+from .models import ContractAnalysis, FormGuide, PayslipAnalysis, RunState
 
 URGENCY_STYLE = {
     "overdue": ("OVERDUE", "red"),
@@ -69,13 +69,51 @@ def render(state: RunState, verbose: bool = False) -> str:
         out.append(_h("German words to know"))
         out += [f"  {g.german} – {g.english}" + (f" ({g.note})" if g.note else "") for g in state.explanation.glossary]
 
+    a = state.analysis
+    if isinstance(a, PayslipAnalysis):
+        out.append(_h(f"Payslip · {a.period}" + (f" · tax class {a.tax_class}" if a.tax_class else "")))
+        out.append(f"  {'Gross':<44}{a.gross:>12,.2f}")
+        for cat, title in (("tax", "Taxes"), ("social_insurance", "Social insurance")):
+            items = [l for l in a.lines if l.category == cat]
+            if items:
+                out.append(click.style(f"  {title}", bold=True))
+                out += [f"    − {l.label:<40}{l.amount:>10,.2f}" + click.style(f"  {l.explanation_en}", dim=True) for l in items]
+        out.append(click.style(f"  {'Net':<44}{a.net:>12,.2f}", bold=True))
+        for l in (l for l in a.lines if l.category in ("other_deduction", "addition")):
+            sign = "−" if l.category == "other_deduction" else "+"
+            out.append(f"    {sign} {l.label:<40}{l.amount:>10,.2f}" + click.style(f"  {l.explanation_en}", dim=True))
+        if a.payout is not None:
+            out.append(click.style(f"  {'Paid out':<44}{a.payout:>12,.2f}", bold=True))
+        out += [_wrap(f"? {w}") for w in a.worth_checking_en]
+    elif isinstance(a, ContractAnalysis):
+        out.append(_h(f"Contract · {a.contract_type}"))
+        for label, value in (("Term", a.minimum_term), ("Ends", a.end_date and a.end_date.strftime("%d.%m.%Y")),
+                             ("Renewal", a.renewal), ("Notice", a.notice_period), ("Costs", ", ".join(a.recurring_costs))):
+            if value:
+                out.append(_wrap(f"{label + ':':<9}{value}"))
+        if a.watch_out:
+            out.append(_h("Watch out"))
+            out += [_wrap(f"⚠ {c.title}: {c.explanation_en}") for c in a.watch_out]
+    elif isinstance(a, FormGuide):
+        out.append(_h(f"Form · {a.form_name}"))
+        out.append(_wrap(a.purpose_en))
+        for f in a.fields:
+            req = "" if f.required is None else (" (required)" if f.required else " (optional)")
+            out.append(_wrap(f"• {f.label}{req}: {f.explanation_en} → {f.what_to_enter}"))
+        if a.attachments:
+            out += [_h("Attach")] + [_wrap(f"• {x}") for x in a.attachments]
+        out += [_wrap(f"⚠ {w}") for w in a.watch_out]
+        if a.where_to_send:
+            out.append(_wrap(f"Send to: {a.where_to_send}"))
+
     if state.supervisor_notes:
         out += [_h("Supervisor"), _wrap(state.supervisor_notes)]
 
     v = state.verification
     if v:
         status = click.style("passed", fg="green") if v.passed else click.style("FAILED", fg="red")
-        out.append(_h("Checks") + f"  {status} · {v.quotes_checked} quotes checked against the letter · {v.extraction_rounds} extraction round(s)")
+        rounds = f" · {v.extraction_rounds} extraction round(s)" if v.extraction_rounds else ""
+        out.append(_h("Checks") + f"  {status} · {v.quotes_checked} quotes checked against the document{rounds}")
         for msg in v.repaired:
             out.append(click.style(_wrap(f"repaired: {msg}"), dim=True))
         for i in v.issues:

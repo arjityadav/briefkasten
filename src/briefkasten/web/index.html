@@ -77,8 +77,8 @@
   <aside>
     <form class="card" id="form">
       <h2>New letter</h2>
-      <div class="drop" id="drop" tabindex="0">Drop a PDF, photo or .txt here<br><span class="muted">or click to choose</span></div>
-      <input type="file" id="file" accept=".pdf,.txt,.md,.png,.jpg,.jpeg,.webp" hidden>
+      <div class="drop" id="drop" tabindex="0">Drop a PDF, Word file, e-mail or photos here<br><span class="muted">or click to choose · several photos = one document, in order</span></div>
+      <input type="file" id="file" accept=".pdf,.docx,.eml,.txt,.md,.png,.jpg,.jpeg,.webp,.heic,.heif" multiple hidden>
       <div class="muted" id="fname" style="margin-top:6px"></div>
       <label for="text">…or paste the text</label>
       <textarea id="text" placeholder="Sehr geehrte …"></textarea>
@@ -150,7 +150,7 @@ $("#runs").onclick = async (e) => { const a = e.target.closest("a"); if (!a) ret
 const drop = $("#drop"), fileIn = $("#file");
 drop.onclick = () => fileIn.click();
 drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") fileIn.click(); };
-fileIn.onchange = () => { $("#fname").textContent = fileIn.files[0]?.name || ""; };
+fileIn.onchange = () => { $("#fname").textContent = [...fileIn.files].map((f) => f.name).join(", "); };
 ["dragover", "dragenter"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
 drop.addEventListener("drop", (e) => { fileIn.files = e.dataTransfer.files; fileIn.onchange(); });
@@ -158,7 +158,7 @@ drop.addEventListener("drop", (e) => { fileIn.files = e.dataTransfer.files; file
 $("#form").onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData();
-  if (fileIn.files[0]) fd.append("file", fileIn.files[0]); else fd.append("text", $("#text").value);
+  if (fileIn.files.length) [...fileIn.files].forEach((f) => fd.append("file", f)); else fd.append("text", $("#text").value);
   if ($("#received").value) fd.append("received_on", $("#received").value);
   if ($("#intent").value) fd.append("intent", $("#intent").value);
   fd.append("bundesland", $("#state").value);
@@ -172,6 +172,35 @@ async function run(fn) {
   try { show(await fn()); if (!demoOnly) loadRuns(); }
   catch (err) { $("#result").innerHTML = ""; $("#formError").innerHTML = `<div class="error-box">${esc(err.message)}</div>`; }
   finally { btns.forEach((b) => (b.disabled = false)); }
+}
+
+function analysisCard(a) {
+  if (!a) return "";
+  const row = (label, amount, note = "", strong = false) =>
+    `<tr><td>${strong ? `<strong>${esc(label)}</strong>` : esc(label)}${note ? `<div class="muted">${esc(note)}</div>` : ""}</td><td class="num">${strong ? `<strong>${eur(amount)}</strong>` : eur(amount)}</td></tr>`;
+  const clauses = (list) => list.map((c) => `<li><strong>${esc(c.title)}:</strong> ${esc(c.explanation_en)}<div class="muted">„${esc(c.quote)}“</div></li>`).join("");
+  if (a.family === "payslip") {
+    const group = (cats, sign) => a.lines.filter((l) => cats.includes(l.category)).map((l) => row(`${sign} ${l.label}`, l.amount, l.explanation_en)).join("");
+    return `<div class="card"><h2>Payslip · ${esc(a.period)}${a.tax_class ? ` · tax class ${esc(a.tax_class)}` : ""}</h2><table>
+      ${row("Gross", a.gross, "", true)}${group(["tax"], "−")}${group(["social_insurance"], "−")}${row("Net", a.net, "", true)}
+      ${group(["other_deduction"], "−")}${group(["addition"], "+")}${a.payout !== null ? row("Paid out", a.payout, "", true) : ""}</table>
+      ${a.worth_checking_en.length ? `<ul class="points">${a.worth_checking_en.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}</div>`;
+  }
+  if (a.family === "contract") {
+    const facts = [["Term", a.minimum_term], ["Ends", a.end_date && fmtDate(a.end_date)], ["Renewal", a.renewal], ["Notice", a.notice_period], ["Costs", a.recurring_costs.join(", ")]]
+      .filter(([, v]) => v).map(([k, v]) => `<tr><td><strong>${k}</strong></td><td>${esc(v)}</td></tr>`).join("");
+    return `<div class="card"><h2>Contract · ${esc(a.contract_type)}</h2><table>${facts}</table>
+      ${a.key_terms.length ? `<h2 style="margin-top:14px">Key terms</h2><ul class="points">${clauses(a.key_terms)}</ul>` : ""}
+      ${a.watch_out.length ? `<h2 style="margin-top:14px">Watch out</h2><ul class="points">${clauses(a.watch_out)}</ul>` : ""}</div>`;
+  }
+  if (a.family === "form") {
+    return `<div class="card"><h2>Form · ${esc(a.form_name)}</h2><p style="margin-top:0">${esc(a.purpose_en)}</p><table>
+      ${a.fields.map((f) => `<tr><td><strong>${esc(f.label)}</strong>${f.required ? ` <span class="tag">required</span>` : ""}<div class="muted">${esc(f.explanation_en)}</div></td><td>${esc(f.what_to_enter)}</td></tr>`).join("")}</table>
+      ${a.attachments.length ? `<p><strong>Attach:</strong> ${a.attachments.map(esc).join(" · ")}</p>` : ""}
+      ${a.watch_out.length ? `<ul class="points">${a.watch_out.map((w) => `<li>⚠ ${esc(w)}</li>`).join("")}</ul>` : ""}
+      ${a.where_to_send ? `<p><strong>Send to:</strong> ${esc(a.where_to_send)}</p>` : ""}</div>`;
+  }
+  return "";
 }
 
 function show(s) {
@@ -193,11 +222,12 @@ function show(s) {
         <details><summary>How this was worked out</summary><ol>${dl.steps.map((st) => `<li>${esc(st)}</li>`).join("")}</ol><p class="muted">Letter says: „${esc(dl.quote)}“</p></details></div></div>`;
     }).join("") + `</div>`;
   }
+  h += analysisCard(s.analysis);
   const side = [];
   if (x?.amounts?.length) side.push(`<div class="card"><h2>Amounts</h2><table>${x.amounts.map((a) => `<tr><td>${esc(a.purpose)}</td><td class="muted">${a.direction.replace("_", " ")}</td><td class="num">${eur(a.value)}</td></tr>`).join("")}</table></div>`);
   if (x?.actions?.length) side.push(`<div class="card"><h2>To do</h2><ul class="points">${x.actions.map((a) => `<li>${a.priority === "high" ? "<strong>" : ""}${esc(a.description)}${a.priority === "high" ? "</strong>" : ""}</li>`).join("")}</ul></div>`);
   if (e?.glossary?.length) side.push(`<div class="card"><h2>German words to know</h2><table>${e.glossary.map((g) => `<tr><td><strong>${esc(g.german)}</strong></td><td>${esc(g.english)}</td></tr>`).join("")}</table></div>`);
-  if (v) side.push(`<div class="card"><h2>Checks</h2><p style="margin-top:0">${v.passed ? "✓ Passed" : "✗ Failed"} · ${v.quotes_checked} quotes verified against the letter · ${v.extraction_rounds} extraction round(s)</p>${v.repaired.map((r) => `<div class="issue warning">Repaired: ${esc(r)}</div>`).join("")}${v.issues.map((i) => `<div class="issue ${i.severity}">${esc(i.message)}</div>`).join("")}</div>`);
+  if (v) side.push(`<div class="card"><h2>Checks</h2><p style="margin-top:0">${v.passed ? "✓ Passed" : "✗ Failed"} · ${v.quotes_checked} quotes verified against the document${v.extraction_rounds ? ` · ${v.extraction_rounds} extraction round(s)` : ""}</p>${v.repaired.map((r) => `<div class="issue warning">Repaired: ${esc(r)}</div>`).join("")}${v.issues.map((i) => `<div class="issue ${i.severity}">${esc(i.message)}</div>`).join("")}</div>`);
   if (s.supervisor_notes) side.push(`<div class="card"><h2>Supervisor</h2><p style="margin-top:0">${esc(s.supervisor_notes)}</p></div>`);
   if (side.length) h += `<div class="grid2">${side.map((c) => `<div>${c}</div>`).join("")}</div>`;
   if (d) {

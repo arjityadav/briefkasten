@@ -1,0 +1,15 @@
+{
+  "letter": "jobcenter_erstattung.txt",
+  "bundesland": "BE",
+  "received_on": null,
+  "sender_type": "job_center_or_employment_agency",
+  "doc_type": "decision",
+  "is_official_decision": true,
+  "letter_date": "2026-11-02",
+  "due_dates": {
+    "payment": "2026-11-30",
+    "right_to_object": "2026-12-07"
+  },
+  "amounts_you_pay": [312.40],
+  "_note": "Objection: letter Mon 02.11. + 4 days = Fri 06.11. (§ 37(2) SGB X); + 1 month = Sun 06.12. -> Mon 07.12.2026."
+}

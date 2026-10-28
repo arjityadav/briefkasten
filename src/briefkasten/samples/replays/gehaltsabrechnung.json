@@ -1,0 +1,287 @@
+{
+  "_comment": "Recorded model turns for `briefkasten demo gehaltsabrechnung`. The payslip agent first files the care insurance under the wrong category; the arithmetic check in its submit tool rejects it and the agent fixes it.",
+  "letter": "gehaltsabrechnung.txt",
+  "intent": null,
+  "responses": {
+    "supervisor": [
+      {
+        "text": "I'll start by classifying the document.",
+        "tool_calls": [
+          {
+            "name": "triage_letter",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "text": "It is a payslip, so it goes to the payslip specialist; the explanation is independent, so both run now.",
+        "tool_calls": [
+          {
+            "name": "explain_letter",
+            "input": {}
+          },
+          {
+            "name": "analyse_payslip",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "text": "The numbers add up after one correction. Now the critic checks the explanation.",
+        "tool_calls": [
+          {
+            "name": "review_explanation",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "text": "A payslip needs no deadlines or reply; the work is complete.",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "notes": "Explained your October payslip line by line; the numbers were checked and add up (gross 3,850.00 € → net 2,454.60 € → paid out 2,414.60 €). Check the church tax if you are no longer a church member."
+            }
+          }
+        ]
+      }
+    ],
+    "triage": [
+      {
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "sender_type": "employer",
+              "sender_name": "Beispiel Software GmbH",
+              "doc_type": "payslip",
+              "language": "de",
+              "is_official_decision": false,
+              "needs_response": false,
+              "confidence": 0.98,
+              "reasoning": "A monthly salary statement (Brutto/Netto-Bezüge) from the employer."
+            }
+          }
+        ]
+      }
+    ],
+    "explainer": [
+      {
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "summary_en": "This is your salary statement for October 2026 from Beispiel Software GmbH. You earned 3,850.00 € gross (salary plus 250.00 € overtime). After income tax, church tax and your share of social insurance, your net pay is 2,454.60 €. 40.00 € goes to your savings contract, so 2,414.60 € is transferred to your bank account.",
+              "key_points": [
+                "Gross pay 3,850.00 €, including 250.00 € for 10 overtime hours.",
+                "Taxes: 561.87 € (income tax and church tax).",
+                "Social insurance: 833.53 € (health, pension, unemployment, long-term care).",
+                "Net pay 2,454.60 €; paid out 2,414.60 € after the 40.00 € VWL savings payment."
+              ],
+              "if_ignored": null,
+              "glossary": [
+                {
+                  "german": "Gesamtbrutto",
+                  "english": "total gross pay"
+                },
+                {
+                  "german": "Nettoverdienst",
+                  "english": "net pay"
+                },
+                {
+                  "german": "Auszahlungsbetrag",
+                  "english": "amount paid out"
+                },
+                {
+                  "german": "Steuerklasse",
+                  "english": "tax class"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "payslip": [
+      {
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "period": "Oktober 2026",
+              "employer": "Beispiel Software GmbH",
+              "tax_class": "1",
+              "gross": 3850.0,
+              "gross_quote": "Gesamtbrutto 3.850,00",
+              "net": 2454.6,
+              "net_quote": "Nettoverdienst 2.454,60",
+              "payout": 2414.6,
+              "payout_quote": "Auszahlungsbetrag 2.414,60",
+              "worth_checking_en": [
+                "Church tax (41.62 €) is deducted because your religion is recorded as 'rk'. If you have left the church, have your registration corrected.",
+                "Check that the 10 overtime hours match your own records."
+              ],
+              "lines": [
+                {
+                  "label": "Lohnsteuer",
+                  "amount": 520.25,
+                  "category": "tax",
+                  "explanation_en": "Income tax, withheld by your employer and paid to the tax office.",
+                  "quote": "Lohnsteuer 520,25"
+                },
+                {
+                  "label": "Solidaritätszuschlag",
+                  "amount": 0.0,
+                  "category": "tax",
+                  "explanation_en": "Solidarity surcharge; zero at this income.",
+                  "quote": "Solidaritätszuschlag 0,00"
+                },
+                {
+                  "label": "Kirchensteuer",
+                  "amount": 41.62,
+                  "category": "tax",
+                  "explanation_en": "Church tax (8 % of income tax in Baden-Württemberg), because you are registered as Roman Catholic (rk).",
+                  "quote": "Kirchensteuer 41,62"
+                },
+                {
+                  "label": "Krankenversicherung",
+                  "amount": 336.88,
+                  "category": "social_insurance",
+                  "explanation_en": "Your half of public health insurance, including half of the AOK's additional contribution.",
+                  "quote": "Krankenversicherung (7,3 % + 1,45 % Zusatzbeitrag) 336,88"
+                },
+                {
+                  "label": "Rentenversicherung",
+                  "amount": 358.05,
+                  "category": "social_insurance",
+                  "explanation_en": "Your half of the state pension contribution.",
+                  "quote": "Rentenversicherung (9,3 %) 358,05"
+                },
+                {
+                  "label": "Arbeitslosenversicherung",
+                  "amount": 50.05,
+                  "category": "social_insurance",
+                  "explanation_en": "Your half of unemployment insurance.",
+                  "quote": "Arbeitslosenversicherung (1,3 %) 50,05"
+                },
+                {
+                  "label": "Pflegeversicherung",
+                  "amount": 88.55,
+                  "category": "other_deduction",
+                  "explanation_en": "Long-term care insurance; the higher rate applies to employees without children.",
+                  "quote": "Pflegeversicherung (2,3 %) 88,55"
+                },
+                {
+                  "label": "VWL-Sparrate",
+                  "amount": 40.0,
+                  "category": "other_deduction",
+                  "explanation_en": "Your savings contract payment (vermögenswirksame Leistungen), paid from your net pay into your Bausparvertrag.",
+                  "quote": "VWL-Sparrate (Bausparvertrag) 40,00"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "text": "Pflegeversicherung is social insurance, not a deduction after net. Corrected.",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "period": "Oktober 2026",
+              "employer": "Beispiel Software GmbH",
+              "tax_class": "1",
+              "gross": 3850.0,
+              "gross_quote": "Gesamtbrutto 3.850,00",
+              "net": 2454.6,
+              "net_quote": "Nettoverdienst 2.454,60",
+              "payout": 2414.6,
+              "payout_quote": "Auszahlungsbetrag 2.414,60",
+              "worth_checking_en": [
+                "Church tax (41.62 €) is deducted because your religion is recorded as 'rk'. If you have left the church, have your registration corrected.",
+                "Check that the 10 overtime hours match your own records."
+              ],
+              "lines": [
+                {
+                  "label": "Lohnsteuer",
+                  "amount": 520.25,
+                  "category": "tax",
+                  "explanation_en": "Income tax, withheld by your employer and paid to the tax office.",
+                  "quote": "Lohnsteuer 520,25"
+                },
+                {
+                  "label": "Solidaritätszuschlag",
+                  "amount": 0.0,
+                  "category": "tax",
+                  "explanation_en": "Solidarity surcharge; zero at this income.",
+                  "quote": "Solidaritätszuschlag 0,00"
+                },
+                {
+                  "label": "Kirchensteuer",
+                  "amount": 41.62,
+                  "category": "tax",
+                  "explanation_en": "Church tax (8 % of income tax in Baden-Württemberg), because you are registered as Roman Catholic (rk).",
+                  "quote": "Kirchensteuer 41,62"
+                },
+                {
+                  "label": "Krankenversicherung",
+                  "amount": 336.88,
+                  "category": "social_insurance",
+                  "explanation_en": "Your half of public health insurance, including half of the AOK's additional contribution.",
+                  "quote": "Krankenversicherung (7,3 % + 1,45 % Zusatzbeitrag) 336,88"
+                },
+                {
+                  "label": "Rentenversicherung",
+                  "amount": 358.05,
+                  "category": "social_insurance",
+                  "explanation_en": "Your half of the state pension contribution.",
+                  "quote": "Rentenversicherung (9,3 %) 358,05"
+                },
+                {
+                  "label": "Arbeitslosenversicherung",
+                  "amount": 50.05,
+                  "category": "social_insurance",
+                  "explanation_en": "Your half of unemployment insurance.",
+                  "quote": "Arbeitslosenversicherung (1,3 %) 50,05"
+                },
+                {
+                  "label": "Pflegeversicherung",
+                  "amount": 88.55,
+                  "category": "social_insurance",
+                  "explanation_en": "Long-term care insurance; the higher rate applies to employees without children.",
+                  "quote": "Pflegeversicherung (2,3 %) 88,55"
+                },
+                {
+                  "label": "VWL-Sparrate",
+                  "amount": 40.0,
+                  "category": "other_deduction",
+                  "explanation_en": "Your savings contract payment (vermögenswirksame Leistungen), paid from your net pay into your Bausparvertrag.",
+                  "quote": "VWL-Sparrate (Bausparvertrag) 40,00"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "critic": [
+      {
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "unsupported_claims": [],
+              "missing_important_points": []
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

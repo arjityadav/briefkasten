@@ -20,6 +20,8 @@ class SenderType(str, Enum):
     CITY_OFFICE = "city_or_registration_office"
     IMMIGRATION_OFFICE = "immigration_office"
     FAMILY_BENEFITS = "family_benefits_office"
+    SOCIAL_BENEFITS = "social_benefits_office"  # Sozialamt, Wohngeld, Elterngeld, BAföG
+    FINE_AUTHORITY = "police_or_fine_office"  # Bußgeldstelle, Polizei
     LANDLORD = "landlord_or_property_manager"
     UTILITY = "utility_or_telecom"
     BANK_OR_INSURANCE = "bank_or_insurance"
@@ -38,6 +40,11 @@ class DocType(str, Enum):
     CONTRACT_CHANGE = "contract_change_or_termination"
     APPOINTMENT = "appointment_or_invitation"
     INFORMATION = "information_only"
+    COURT = "court_document"  # Mahnbescheid, Vollstreckungsbescheid, Ladung, Klage
+    PENALTY = "penalty_notice"  # Bußgeldbescheid, Verwarnung, Anhörungsbogen
+    CONTRACT = "contract"  # Mietvertrag, Arbeitsvertrag, Handy-/Stromvertrag, AGB
+    PAYSLIP = "payslip"  # Lohn-/Gehaltsabrechnung
+    FORM = "form_to_fill"  # Antrag, Formular, Fragebogen to complete
     OTHER = "other"
 
 
@@ -76,14 +83,20 @@ class Explanation(BaseModel):
 
 
 class DeadlineRule(BaseModel):
-    kind: Literal["fixed_date", "after_notification", "after_receipt"] = Field(
+    kind: Literal["fixed_date", "after_notification", "after_receipt", "after_service", "before_date"] = Field(
         description=(
             "fixed_date: an explicit calendar date in the letter. "
-            "after_notification: a period that starts when an official decision counts as delivered (Bekanntgabe). "
-            "after_receipt: a period that starts when the recipient received a private letter (Erhalt/Zugang)."
+            "after_notification: a period that starts when an official decision sent by post or electronically counts "
+            "as delivered (Bekanntgabe). "
+            "after_receipt: a period that starts when the recipient received a private letter (Erhalt/Zugang). "
+            "after_service: a period that starts on formal delivery (Zustellung, yellow envelope / "
+            "Zustellungsurkunde), e.g. Mahnbescheid, Vollstreckungsbescheid, Bußgeldbescheid, court documents. "
+            "before_date: a notice period that must be met BEFORE reference_date, e.g. 'Kündigung 3 Monate zum Ende "
+            "der Vertragslaufzeit' with the contract end date as reference_date."
         )
     )
     fixed_date: date | None = None
+    reference_date: date | None = Field(None, description="Only for before_date: the date the period counts back from")
     months: int = 0
     weeks: int = 0
     days: int = 0
@@ -129,6 +142,74 @@ class Extraction(BaseModel):
         False, description="True if the letter contains a Rechtsbehelfsbelehrung / Rechtsmittelbelehrung"
     )
 
+
+# --------------------------------------------------------------------------- non-letter documents
+# Each has a `family` tag so a run can hold whichever analysis fits the document.
+
+
+class PayslipLine(BaseModel):
+    label: str = Field(description="As printed, e.g. Lohnsteuer, KV-Beitrag, VWL")
+    amount: float
+    category: Literal["tax", "social_insurance", "other_deduction", "addition"] = Field(
+        description="tax and social_insurance are taken from gross to reach net; other_deduction and addition change the payout after net"
+    )
+    explanation_en: str
+    quote: str
+
+
+class PayslipAnalysis(BaseModel):
+    family: Literal["payslip"] = "payslip"
+    period: str = Field(description="Pay period, e.g. 'Oktober 2026'")
+    employer: str | None = None
+    tax_class: str | None = Field(None, description="Steuerklasse, if printed")
+    gross: float = Field(description="Gesamtbrutto")
+    gross_quote: str
+    net: float = Field(description="Nettoverdienst (gross minus taxes and social insurance)")
+    net_quote: str
+    payout: float | None = Field(None, description="Auszahlungsbetrag, if different from net")
+    payout_quote: str | None = None
+    lines: list[PayslipLine] = Field(default_factory=list, description="Every deduction and addition")
+    worth_checking_en: list[str] = Field(default_factory=list, description="Things the employee should double-check")
+
+
+class Clause(BaseModel):
+    title: str
+    explanation_en: str
+    quote: str
+
+
+class ContractAnalysis(BaseModel):
+    family: Literal["contract"] = "contract"
+    contract_type: str = Field(description="e.g. mobile phone contract, rental contract, employment contract")
+    parties: list[str] = Field(default_factory=list)
+    start_date: date | None = None
+    minimum_term: str | None = Field(None, description="e.g. '24 months'")
+    end_date: date | None = Field(None, description="End of the minimum or fixed term, if determinable")
+    renewal: str | None = Field(None, description="What happens if nobody cancels")
+    notice_period: str | None = Field(None, description="How and when it can be cancelled")
+    recurring_costs: list[str] = Field(default_factory=list, description="e.g. '34,99 € per month'")
+    key_terms: list[Clause] = Field(default_factory=list, description="The terms that matter most, max 6")
+    watch_out: list[Clause] = Field(default_factory=list, description="Unusual or disadvantageous clauses")
+
+
+class FormField(BaseModel):
+    label: str = Field(description="Field label exactly as printed on the form")
+    explanation_en: str
+    what_to_enter: str = Field(description="Practical guidance; never invent the reader's data")
+    required: bool | None = None
+
+
+class FormGuide(BaseModel):
+    family: Literal["form"] = "form"
+    form_name: str
+    purpose_en: str
+    fields: list[FormField]
+    attachments: list[str] = Field(default_factory=list, description="Documents to include")
+    where_to_send: str | None = None
+    watch_out: list[str] = Field(default_factory=list, description="Fields with consequences, e.g. religion -> church tax")
+
+
+DocumentAnalysis = PayslipAnalysis | ContractAnalysis | FormGuide
 
 # --------------------------------------------------------------------------- deterministic results
 
@@ -237,6 +318,7 @@ class RunState(BaseModel):
     verification: Verification | None = None
     urgency: Literal["overdue", "urgent", "soon", "relaxed", "none"] = "none"
     draft: ReplyDraft | None = None
+    analysis: DocumentAnalysis | None = Field(None, discriminator="family")
     supervisor_notes: str | None = None
     trace: list[TraceEvent] = Field(default_factory=list)
 

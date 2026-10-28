@@ -21,22 +21,23 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from ..models import REPLY_INTENTS, Issue, ReplyDraft, RunState, TraceEvent
+from ..models import REPLY_INTENTS, DocType, Issue, ReplyDraft, RunState, TraceEvent
 from ..tools.deadlines import resolve_deadline, urgency
 from ..tools.redact import open_placeholders
 from .base import Agent, NoParams, Tool, ToolError
 from .extractor import DeadlineContext
-from .verifier import check_grounding
+from .verifier import check_analysis, check_grounding
 
 if TYPE_CHECKING:
+    from .analysts import ContractAgent, FormAgent, PayslipAgent
     from .drafter import DrafterAgent
     from .explainer import ExplainerAgent
     from .extractor import ExtractorAgent
     from .triage import TriageAgent
     from .verifier import CriticAgent
 
-SYSTEM = f"""You are the Supervisor of Briefkasten, a team of AI agents that helps people in Germany deal with official mail.
-You do not read the letter yourself. You plan the work, delegate it to specialists through tools, judge what
+SYSTEM = f"""You are the Supervisor of Briefkasten, a team of AI agents that helps people in Germany deal with official mail
+and everyday documents: letters, contracts, payslips, invoices and forms. You do not read the document yourself. You plan the work, delegate it to specialists through tools, judge what
 they return, and decide what happens next.
 
 Your team:
@@ -47,15 +48,22 @@ Your team:
 - compute_deadlines: deterministic legal date calculator (not an AI). The only source of due dates.
 - review_explanation: a critic that checks the explanation against the letter.
 - draft_reply: drafts a formal German reply that the user must approve.
+- analyse_payslip: explains a payslip line by line; code checks that the numbers add up.
+- analyse_contract: costs, term, renewal, cancellation and clauses to watch out for.
+- guide_form: explains each field of a form the user must fill in.
 
 How to work:
-- Start with triage. Explaining and extracting are independent: request both in the same turn.
+- Start with triage; its doc_type decides the route:
+  letters and invoices: explain + extract (+ draft if needed); contract: explain + extract + analyse_contract
+  (the extractor turns the notice period into a cancel-by deadline); payslip: explain + analyse_payslip
+  (extracting is optional); form_to_fill: explain + extract + guide_form.
+- Specialists that don't depend on each other should be requested in the same turn.
 - Always compute deadlines from the current extraction, and always review the current explanation.
 - If the critic reports unsupported claims or important omissions, ask the explainer to revise once with that
   feedback, then review again. Minor wording issues are not worth a revision.
 - If extraction still has verifier errors, you may ask once more with specific instructions; otherwise move on,
   the errors will be shown to the user.
-- Draft a reply when the user asked for one or triage says a response is needed. Pass the user's intent if given.
+- Draft a reply when the user asked for one, or when a letter needs a response. Pass the user's intent if given.
 - Finish with submit. In notes, tell the user in 1-3 plain-English sentences what the team did and anything to double-check.
 
 Each specialist has a small call budget; tools tell you when it is used up."""
@@ -67,7 +75,13 @@ BUDGET = {
     "compute_deadlines": 3,
     "review_explanation": 2,
     "draft_reply": 2,
+    "analyse_payslip": 2,
+    "analyse_contract": 2,
+    "guide_form": 2,
 }
+
+# Document types that get their own specialist instead of being treated as a letter.
+FAMILY = {DocType.PAYSLIP: "payslip", DocType.CONTRACT: "contract", DocType.FORM: "form"}
 
 
 class FeedbackParams(BaseModel):
@@ -95,6 +109,8 @@ class Workspace:
     repaired: list[str] = field(default_factory=list)
     deadlines_current: bool = False
     review_current: bool = False
+    analysis_issues: list[Issue] = field(default_factory=list)
+    analysis_quotes: int = 0
     calls: Counter = field(default_factory=Counter)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -108,9 +124,15 @@ class Workspace:
                 raise ToolError(f"Budget for {tool} is used up ({BUDGET[tool]} call(s)). Continue with what you have.")
             self.calls[tool] += 1
 
+    @property
+    def family(self) -> str:
+        """letter, payslip, contract or form, from triage."""
+        t = self.state.triage
+        return FAMILY.get(t.doc_type, "letter") if t else "letter"
+
     def reply_required(self) -> bool:
         s = self.state
-        return bool(s.reply_intent or (s.triage and s.triage.needs_response))
+        return bool(s.reply_intent or (s.triage and s.triage.needs_response and self.family == "letter"))
 
 
 def _dump(obj) -> str:
@@ -132,9 +154,13 @@ class SupervisorAgent(Agent):
         extractor: ExtractorAgent,
         critic: CriticAgent,
         drafter: DrafterAgent,
+        payslip: PayslipAgent,
+        contract: ContractAgent,
+        form: FormAgent,
         max_extraction_retries: int = 1,
     ):
         super().__init__(router)
+        self.analysts = {"payslip": payslip, "contract": contract, "form": form}
         self.triage = triage
         self.explainer = explainer
         self.extractor = extractor
@@ -145,7 +171,7 @@ class SupervisorAgent(Agent):
     def run(self, ws: Workspace, trace: list[TraceEvent]) -> SupervisorReport:
         s = ws.state
         prompt = (
-            "A new letter has arrived.\n"
+            "A new document has arrived.\n"
             f"User's requested reply: {s.reply_intent or 'none (decide from triage)'}\n"
             f"User received it on: {s.received_on or 'unknown'}\n"
             f"Bundesland: {s.bundesland} · today: {s.today}\n"
@@ -173,9 +199,13 @@ class SupervisorAgent(Agent):
         elif not ws.review_current:
             missing.append("the current explanation has not been reviewed")
         if not s.extraction:
-            missing.append("no facts have been extracted")
+            if ws.family != "payslip":  # payslips carry no deadlines; extracting them is optional
+                missing.append("no facts have been extracted")
         elif not ws.deadlines_current:
             missing.append("deadlines have not been computed from the current extraction")
+        if ws.family != "letter" and (s.analysis is None or s.analysis.family != ws.family):
+            tool = {"payslip": "analyse_payslip", "contract": "analyse_contract", "form": "guide_form"}[ws.family]
+            missing.append(f"this is a {ws.family}, but {tool} has not run")
         if ws.reply_required() and not s.draft:
             missing.append("a reply is required (requested by the user or needed per triage) but none was drafted")
         return missing
@@ -282,6 +312,28 @@ class SupervisorAgent(Agent):
             blanks = list(dict.fromkeys(open_placeholders(out.subject_de + "\n" + out.body_de, s.redactions)))
             return _dump({"intent": out.intent, "subject_de": out.subject_de, "blanks_for_user": blanks, "notes_en": out.notes_en})
 
+        def analyse(family: str, tool: str):
+            def run(p: FeedbackParams) -> str:
+                need(s.triage, "Run triage_letter first.")
+                need(
+                    ws.family == family,
+                    f"Triage classified this document as {s.triage.doc_type.value}, not a {family}. Use the matching specialist.",
+                )
+                ws.spend(tool)
+                rejected: list[str] = []
+                analysis = self.analysts[family].run(ws.letter, s.triage, trace, feedback=p.feedback or None, rejected=rejected)
+                issues, checked = check_analysis(analysis, ws.letter)
+                with ws.lock:
+                    s.analysis, ws.analysis_issues, ws.analysis_quotes = analysis, issues, checked
+                    ws.repaired += rejected
+                summary = analysis.model_dump(mode="json", exclude={"family"})
+                summary["fixed_by_specialist"] = rejected
+                summary["remaining_errors"] = [i.message for i in issues if i.severity == "error"]
+                summary["warnings"] = [i.message for i in issues if i.severity == "warning"]
+                return _dump(summary)
+
+            return run
+
         return [
             Tool("triage_letter", "Classify the letter (sender, type, reply needed).", NoParams, triage_letter),
             Tool("explain_letter", "Have the Explainer write (or revise) the plain-English explanation.", FeedbackParams, explain_letter),
@@ -289,5 +341,8 @@ class SupervisorAgent(Agent):
             Tool("compute_deadlines", "Compute legal due dates from the current extraction (deterministic).", NoParams, compute_deadlines),
             Tool("review_explanation", "Have the Critic check the current explanation against the letter.", NoParams, review_explanation),
             Tool("draft_reply", "Have the Drafter write a German reply for the user to approve.", DraftParams, draft_reply),
+            Tool("analyse_payslip", "Have the Payslip agent explain a payslip; the arithmetic is checked.", FeedbackParams, analyse("payslip", "analyse_payslip")),
+            Tool("analyse_contract", "Have the Contract agent explain a contract's terms and risks.", FeedbackParams, analyse("contract", "analyse_contract")),
+            Tool("guide_form", "Have the Form agent explain each field of a form to fill in.", FeedbackParams, analyse("form", "guide_form")),
         ]
 

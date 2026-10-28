@@ -3,7 +3,22 @@
 **A multi-agent assistant for official German mail.** Upload a letter from the Finanzamt, your Krankenkasse,
 the Jobcenter or your landlord. Briefkasten explains it in plain English, works out every deadline with the
 actual legal rules (including weekends and your Bundesland's public holidays), checks its own work against the
-letter, and drafts a formal German reply that you approve before it goes anywhere.
+letter, and drafts a formal German reply that you approve before it goes anywhere. It also explains everyday
+documents: payslips (with the arithmetic checked), contracts (with a cancel-by date) and forms to fill in.
+
+## What it handles
+
+| | Examples | What you get |
+|---|---|---|
+| **Official letters** | Finanzamt, Jobcenter, Krankenkasse, Familienkasse, Ausländerbehörde, Rundfunkbeitrag | Explanation, deadlines, objection or reply draft |
+| **Formally served documents** (yellow envelope) | Mahnbescheid, Vollstreckungsbescheid, Bußgeldbescheid, court letters | Deadlines counted from the delivery date on the envelope (`--received`) |
+| **Private letters and invoices** | Landlord's Nebenkostenabrechnung, Mahnung, Inkasso | Amounts, payment and objection deadlines |
+| **Contracts** | Phone, energy, gym, rental, employment | Costs, term, renewal, clauses to watch out for, cancel-by date |
+| **Payslips** | Lohn-/Gehaltsabrechnung | Every line explained; gross → net → payout checked by code |
+| **Forms** | Anmeldung, Anträge | Each field explained, attachments, consequences |
+
+Input files: `.pdf` (text or scanned), `.docx`, `.eml` (body and attachments), `.txt`, and photos (`.jpg`, `.png`,
+`.webp`, `.heic`). Several files are read as one document in order, e.g. one photo per page.
 
 > Millions of people in Germany get official letters they can't fully read. Missing a one-month
 > *Einspruchsfrist* can cost real money, and the deadline is not "one month from the date on the letter".
@@ -34,7 +49,7 @@ judges what comes back, and decides whether to redo something with feedback.
 
 ```mermaid
 flowchart LR
-    U[Letter: PDF / photo / text] --> I[Intake<br/>pypdf or Transcriber agent]
+    U[Document: PDF / Word / e-mail / photos] --> I[Intake<br/>pypdf, docx, eml or Transcriber agent]
     I --> R[Redactor<br/>IBAN, Steuer-ID, names → placeholders]
     R --> S((Supervisor agent<br/>plans · delegates · judges))
     S <-->|triage_letter| T[Triage agent]
@@ -43,6 +58,7 @@ flowchart LR
     S <-->|compute_deadlines| D[Deadline tool<br/>deterministic BGB/AO]
     S <-->|review_explanation| C[Critic agent]
     S <-->|draft_reply| W[Drafter agent]
+    S <-->|analyse_payslip · analyse_contract · guide_form| A[Payslip / Contract / Form agents]
     X <-->|find_in_letter · preview_deadline · submit→verifier| XT[(tools)]
     W <-->|find_in_letter · check_draft · submit→checks| WT[(tools)]
     S --> H[[Human approval<br/>edit, fill blanks]]
@@ -57,7 +73,14 @@ flowchart LR
 | **Extractor** | smart | `find_in_letter`, `preview_deadline` | Deadlines *as rules*, amounts, references, actions, each with a verbatim quote. Its `submit` runs the verifier and rejects ungrounded facts |
 | **Critic** | fast | `find_in_letter` | Flags explanation claims the letter doesn't support |
 | **Drafter** | smart | `find_in_letter`, `check_draft` | Formal German reply + English translation, with `[blanks]` for facts only you know |
-| **Transcriber** | vision | – | Photos and scanned PDFs to text (single call) |
+| **Payslip** | smart | `find_in_letter` | Every pay line with its category; `submit` checks the amounts and that gross − taxes − social insurance = net, and net ± other lines = payout |
+| **Contract** | smart | `find_in_letter` | Costs, term, renewal, notice, key terms and clauses to watch out for, each quoted |
+| **Form** | smart | `find_in_letter` | Each field (label must exist on the form), what to enter, attachments, consequences |
+| **Transcriber** | vision | – | Photos and scanned PDFs to text, 4 pages per call |
+
+The Supervisor routes by document type: letters go to explain + extract (+ draft), contracts additionally to the
+Contract agent (the Extractor turns the notice period into a cancel-by date), payslips to the Payslip agent, and
+forms to the Form agent. It cannot finish until the specialist that fits the document has run.
 
 Code, not models, owns: redaction, deadline arithmetic (`tools/deadlines.py`), grounding checks
 (`tools/grounding.py`), per-specialist call budgets, the preconditions on every supervisor tool, and the
@@ -113,6 +136,9 @@ pip install -e ".[web,dev]"
 
 briefkasten demo                         # full pipeline offline, recorded agent replies
 briefkasten demo vermieter_nebenkosten   # extractor fixes its own mistake after the verifier rejects it
+briefkasten demo gehaltsabrechnung       # payslip: the arithmetic check catches a misfiled line
+briefkasten demo handyvertrag            # contract: clauses to watch out for and the cancel-by date
+briefkasten process seite1.jpg seite2.jpg --received 06.11.2026   # photos of a served letter, envelope date
 briefkasten demo -v                      # show each agent's reasoning and tool calls
 briefkasten deadline --letter-date 13.10.2026 --months 1    # pure deadline maths, no AI
 ```
@@ -203,7 +229,7 @@ encrypted, expiring storage first.
 ## Testing and evaluation
 
 ```bash
-pytest                       # 52 tests: holidays, deadline law, redaction, grounding, agents, providers, API
+pytest                       # 88 tests: deadline law, holidays, redaction, grounding, agents, file formats, providers, API
 python evals/run_eval.py     # real model against hand-labelled letters
 ```
 
@@ -233,15 +259,20 @@ tests/
 
 ## Limitations
 
-- Not legal or tax advice. The deadline rules cover the common cases (Bescheide by post or electronically,
-  private letters, fixed dates). Special regimes, service by *Zustellungsurkunde*, and court deadlines are not modelled.
+- Not legal or tax advice. The deadline rules cover Bescheide by post or electronically, private letters, fixed dates,
+  formal service (Zustellung) and contract notice periods. Without the envelope date, deadlines for served documents
+  use the letter date as the earliest possible start and are marked *estimated*. Special regimes (e.g. procedural
+  deadlines inside an ongoing court case, Wiedereinsetzung) are not modelled.
 - Holidays cover statutory state-wide days; local ones (e.g. Augsburger Friedensfest) are not included.
 - Names and addresses are only masked if you list them; images are sent to the vision model before redaction
   (use a local model for scans if that matters).
 - Agents need a model with native tool calling. Most current local models (Qwen 2.5, Llama 3.1+) support it
   through Ollama; very small models may wander, which the step limits and budgets contain but cannot fix.
 - Real-model runs make more calls than a fixed pipeline (roughly 15-20 steps and ~55k tokens per letter instead of 6 calls).
-- The eval set is small (four letters). Growing it with real, anonymised letters is the most valuable next step.
+- The eval set is small (11 hand-labelled documents). Growing it with real, anonymised documents is the most valuable next step.
+- Payslips: the arithmetic check assumes the usual layout (gross − taxes − social insurance = net). Unusual items such as
+  benefits in kind can make a correct payslip fail the check; it is then shown as an error to look at, not hidden.
+- Invoices use the Extractor only; line items are not summed.
 
 ## Roadmap
 

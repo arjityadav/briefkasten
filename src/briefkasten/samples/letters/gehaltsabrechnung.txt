@@ -1,0 +1,34 @@
+Beispiel Software GmbH · Königstraße 20 · 70173 Stuttgart
+
+Abrechnung der Brutto/Netto-Bezüge für Oktober 2026
+
+Max Mustermann                          Personalnummer: 00417
+Musterstraße 12                         Steuerklasse: 1
+70173 Stuttgart                         Konfession: rk
+                                        Kinderfreibeträge: 0,0
+                                        Krankenkasse: AOK Baden-Württemberg
+
+Bezeichnung                                              Betrag
+Gehalt                                                 3.600,00
+Überstundenvergütung (10 Std.)                           250,00
+Gesamtbrutto                                           3.850,00
+
+Steuerrechtliche Abzüge
+Lohnsteuer                                               520,25
+Solidaritätszuschlag                                       0,00
+Kirchensteuer                                             41,62
+
+Sozialversicherungsrechtliche Abzüge
+Krankenversicherung (7,3 % + 1,45 % Zusatzbeitrag)       336,88
+Rentenversicherung (9,3 %)                               358,05
+Arbeitslosenversicherung (1,3 %)                          50,05
+Pflegeversicherung (2,3 %)                                88,55
+
+Nettoverdienst                                         2.454,60
+
+Sonstige Be- und Abzüge
+VWL-Sparrate (Bausparvertrag)                             40,00
+
+Auszahlungsbetrag                                      2.414,60
+
+Überweisung auf IBAN DE89 3704 0044 0532 0130 00

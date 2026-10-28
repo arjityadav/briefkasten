@@ -26,6 +26,7 @@ from .store import MemoryRunStore, RunNotFound, RunStore
 from .tools.holidays_de import STATES
 
 MAX_UPLOAD = 15 * 1024 * 1024
+MAX_FILES = 12  # e.g. one photo per page
 WEB = Path(__file__).parent / "web"
 
 app = FastAPI(title="Briefkasten", version="0.1.0", description="Multi-agent assistant for official German mail")
@@ -101,7 +102,7 @@ def meta() -> dict:
 
 @app.post("/api/runs")
 async def create_run(
-    file: UploadFile | None = File(None),
+    file: list[UploadFile] | None = File(None),
     text: str | None = Form(None),
     received_on: date | None = Form(None),
     intent: str | None = Form(None),
@@ -116,11 +117,16 @@ async def create_run(
         bk.settings = replace(bk.settings, state=bundesland.upper())
     kwargs = {"received_on": received_on, "reply_intent": intent or None}
     try:
-        if file is not None and file.filename:
-            data = await file.read(MAX_UPLOAD + 1)
-            if len(data) > MAX_UPLOAD:
-                raise HTTPException(413, "File too large (max 15 MB)")
-            state = bk.process_file(data, file.filename, **kwargs)
+        uploads = [f for f in file or [] if f.filename]
+        if uploads:
+            files, total = [], 0
+            for f in uploads[:MAX_FILES]:
+                data = await f.read(MAX_UPLOAD + 1)
+                total += len(data)
+                if total > MAX_UPLOAD:
+                    raise HTTPException(413, "Files too large (max 15 MB in total)")
+                files.append((data, f.filename))
+            state = bk.process_files(files, **kwargs)
         elif text and text.strip():
             state = bk.process(text, source_name="pasted-letter.txt", **kwargs)
         else:

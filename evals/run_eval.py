@@ -2,9 +2,11 @@
 
     BRIEFKASTEN_PROVIDER=anthropic ANTHROPIC_API_KEY=... python evals/run_eval.py
     BRIEFKASTEN_PROVIDER=openai BRIEFKASTEN_MODEL=qwen2.5:14b python evals/run_eval.py --repeats 3
+    uv run python evals/run_eval.py --only mahnbescheid      # Groq settings come from .env
 
-Scores per letter: sender type, document type, letter date, every gold deadline
-(matched by kind and date), amounts to pay, grounding pass, plus tokens and latency.
+Scores per document, for whatever its gold file specifies: sender and document type, letter date,
+every gold deadline (matched by date), amounts to pay, payslip/contract/form analysis fields, and
+whether all code checks passed, plus tokens and latency.
 Writes evals/results-<timestamp>.json.
 """
 
@@ -29,17 +31,31 @@ TODAY = date(2026, 10, 28)  # fixed so "days left" is reproducible
 
 
 def score(state, gold: dict) -> dict:
+    """Checks only what the gold file specifies, so letters, payslips, contracts and forms share one scorer."""
     s: dict[str, bool] = {}
     t, x = state.triage, state.extraction
-    s["sender_type"] = bool(t) and t.sender_type.value == gold["sender_type"]
-    s["doc_type"] = bool(t) and t.doc_type.value == gold["doc_type"]
-    s["letter_date"] = bool(x) and str(x.letter_date) == gold["letter_date"]
-    found = {(d.kind, str(d.due_date)) for d in state.deadlines}
-    for kind, due in gold["due_dates"].items():
-        s[f"deadline:{kind}"] = (kind, due) in found
-    pays = sorted(round(a.value, 2) for a in (x.amounts if x else []) if a.direction == "you_pay")
-    s["amounts_you_pay"] = pays == sorted(gold["amounts_you_pay"])
-    s["grounding_passed"] = bool(state.verification) and state.verification.passed
+    for key in ("sender_type", "doc_type"):
+        if key in gold:
+            s[key] = bool(t) and getattr(t, key).value == gold[key]
+    if "letter_date" in gold:
+        s["letter_date"] = bool(x) and str(x.letter_date) == gold["letter_date"]
+    found = {str(d.due_date) for d in state.deadlines}
+    for kind, due in gold.get("due_dates", {}).items():
+        s[f"deadline:{kind}"] = due in found  # matched by date: the label a model picks matters less than the day
+    if gold.get("amounts_you_pay"):
+        pays = {round(a.value, 2) for a in (x.amounts if x else []) if a.direction == "you_pay"}
+        s["amounts_you_pay"] = set(gold["amounts_you_pay"]) <= pays  # itemised extra amounts are fine
+    if want := gold.get("analysis"):
+        a = state.analysis
+        s["analysis:family"] = bool(a) and a.family == want["family"]
+        for key in ("gross", "net", "payout"):
+            if key in want:
+                s[f"analysis:{key}"] = bool(a) and abs((getattr(a, key, None) or 0) - want[key]) < 0.01
+        if "end_date" in want:
+            s["analysis:end_date"] = bool(a) and str(getattr(a, "end_date", None)) == want["end_date"]
+        if "min_fields" in want:
+            s["analysis:fields"] = bool(a) and len(getattr(a, "fields", [])) >= want["min_fields"]
+    s["checks_passed"] = bool(state.verification) and state.verification.passed
     return s
 
 
@@ -60,7 +76,8 @@ def main() -> None:
         bk.settings.state = gold.get("bundesland", "BW")
         for i in range(args.repeats):
             t0 = time.perf_counter()
-            state = bk.process(letter, source_name=gold["letter"], today=TODAY)
+            received = date.fromisoformat(gold["received_on"]) if gold.get("received_on") else None
+            state = bk.process(letter, source_name=gold["letter"], today=TODAY, received_on=received)
             checks = score(state, gold) if state.status != "failed" else {"run_succeeded": False}
             rows.append(
                 {

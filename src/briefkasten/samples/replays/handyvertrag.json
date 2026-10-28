@@ -1,0 +1,233 @@
+{
+  "_comment": "Recorded model turns for `briefkasten demo handyvertrag`: routing to the contract specialist and a cancel-by deadline counted back from the end of the minimum term.",
+  "letter": "handyvertrag.txt",
+  "intent": null,
+  "responses": {
+    "supervisor": [
+      {
+        "text": "I'll start by classifying the document.",
+        "tool_calls": [
+          {
+            "name": "triage_letter",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "text": "A mobile phone contract. Explanation, extraction (for the cancel-by date) and the contract analysis are independent, so all three run now.",
+        "tool_calls": [
+          {
+            "name": "explain_letter",
+            "input": {}
+          },
+          {
+            "name": "extract_facts",
+            "input": {}
+          },
+          {
+            "name": "analyse_contract",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "text": "Next: the cancel-by date from the notice period, and a review of the explanation.",
+        "tool_calls": [
+          {
+            "name": "compute_deadlines",
+            "input": {}
+          },
+          {
+            "name": "review_explanation",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "text": "All required work for a contract is done.",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "notes": "Summarised your phone contract, flagged the paid data top-ups and the price-increase clause, and worked out the cancel-by date: the notice must arrive by Sun 31.01.2027, so send it in good time."
+            }
+          }
+        ]
+      }
+    ],
+    "triage": [
+      {
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "sender_type": "utility_or_telecom",
+              "sender_name": "FunkNetz Mobil GmbH",
+              "doc_type": "contract",
+              "language": "de",
+              "is_official_decision": false,
+              "needs_response": false,
+              "confidence": 0.96,
+              "reasoning": "A contract summary for a mobile phone tariff with term, price and cancellation terms."
+            }
+          }
+        ]
+      }
+    ],
+    "explainer": [
+      {
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "summary_en": "This is the summary of your mobile phone contract with FunkNetz. You pay 34.99 € a month for unlimited calls and texts and 40 GB of data. The contract runs for 24 months until 28.02.2027; after that it continues month to month unless you cancel.",
+              "key_points": [
+                "34.99 € per month, plus a one-off 39.99 € connection fee.",
+                "Minimum term 24 months, ending 28.02.2027; one month's notice.",
+                "After the minimum term it continues indefinitely and can be cancelled any time with one month's notice.",
+                "Extra data is booked automatically (up to 3 × 2.99 € a month) unless you switch it off in the app."
+              ],
+              "if_ignored": "If you do not cancel in time, the contract simply continues at 34.99 € per month, but you can then cancel it monthly.",
+              "glossary": [
+                {
+                  "german": "Mindestvertragslaufzeit",
+                  "english": "minimum contract term"
+                },
+                {
+                  "german": "Kündigungsfrist",
+                  "english": "notice period"
+                },
+                {
+                  "german": "Sonderkündigungsrecht",
+                  "english": "special right to cancel (e.g. after a price increase)"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "extractor": [
+      {
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "letter_date": "2025-02-14",
+              "letter_date_quote": "Vertragsdatum: 14.02.2025",
+              "deadlines": [
+                {
+                  "id": "cancel",
+                  "purpose": "Cancel before the minimum term ends on 28.02.2027, if you don't want it to continue",
+                  "kind": "action_required",
+                  "rule": {
+                    "kind": "before_date",
+                    "months": 1,
+                    "reference_date": "2027-02-28"
+                  },
+                  "quote": "Der Vertrag kann mit einer Frist von einem Monat zum Ende der Mindestvertragslaufzeit gekündigt werden."
+                }
+              ],
+              "amounts": [
+                {
+                  "value": 34.99,
+                  "purpose": "Monthly base price (months 1-24)",
+                  "direction": "you_pay",
+                  "quote": "Monatlicher Grundpreis: 34,99 € in den Monaten 1 bis 24."
+                },
+                {
+                  "value": 39.99,
+                  "purpose": "One-off connection fee",
+                  "direction": "info",
+                  "quote": "Einmaliger Bereitstellungspreis: 39,99 €."
+                }
+              ],
+              "references": [
+                {
+                  "label": "Kundennummer",
+                  "value": "7720-118845",
+                  "quote": "Kundennummer: 7720-118845"
+                }
+              ],
+              "actions": [
+                {
+                  "description": "Switch off the automatic data top-up in the app if you don't want to pay for extra data.",
+                  "priority": "medium",
+                  "quote": "Die Datenautomatik kann jederzeit kostenlos in der App abbestellt werden."
+                }
+              ],
+              "has_legal_remedy_notice": false
+            }
+          }
+        ]
+      }
+    ],
+    "contract": [
+      {
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "contract_type": "Mobile phone contract",
+              "parties": [
+                "FunkNetz Mobil GmbH",
+                "You (customer)"
+              ],
+              "start_date": "2025-03-01",
+              "minimum_term": "24 months",
+              "end_date": "2027-02-28",
+              "renewal": "Continues indefinitely after 28.02.2027 if not cancelled, then cancellable any time with one month's notice.",
+              "notice_period": "One month before the end of the minimum term; afterwards one month at any time.",
+              "recurring_costs": [
+                "34,99 € per month",
+                "up to 3 × 2,99 € per month for automatic data top-ups"
+              ],
+              "key_terms": [
+                {
+                  "title": "Minimum term",
+                  "explanation_en": "You are bound for 24 months, until 28.02.2027.",
+                  "quote": "Die Mindestvertragslaufzeit beträgt 24 Monate und endet am 28.02.2027."
+                },
+                {
+                  "title": "Notice period",
+                  "explanation_en": "Cancel with one month's notice to the end of the minimum term.",
+                  "quote": "Der Vertrag kann mit einer Frist von einem Monat zum Ende der Mindestvertragslaufzeit gekündigt werden."
+                }
+              ],
+              "watch_out": [
+                {
+                  "title": "Automatic data top-ups",
+                  "explanation_en": "When your data runs out, up to 3 GB are added automatically at 2.99 € each, up to 8.97 € extra per month. You can switch this off for free.",
+                  "quote": "Nach Verbrauch des Datenvolumens werden bis zu dreimal pro Monat automatisch je 1 GB für je 2,99 € nachgebucht."
+                },
+                {
+                  "title": "Price increases",
+                  "explanation_en": "FunkNetz may raise prices with six weeks' notice; you may then cancel early.",
+                  "quote": "FunkNetz ist berechtigt, die Preise bei gestiegenen Kosten mit einer Ankündigungsfrist von sechs Wochen anzupassen."
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "critic": [
+      {
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "unsupported_claims": [],
+              "missing_important_points": []
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

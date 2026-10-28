@@ -1,3 +1,4 @@
+from .analysts import ContractAgent, FormAgent, PayslipAgent
 from .base import AgentError, LiveTrace, Progress
 from .drafter import DrafterAgent
 from .explainer import ExplainerAgent
@@ -9,13 +10,16 @@ from .verifier import CriticAgent, check_grounding
 
 __all__ = [
     "AgentError",
+    "ContractAgent",
     "CriticAgent",
     "DeadlineContext",
     "DrafterAgent",
     "ExplainerAgent",
     "ExtractionRun",
     "ExtractorAgent",
+    "FormAgent",
     "LiveTrace",
+    "PayslipAgent",
     "Progress",
     "SupervisorAgent",
     "TranscriberAgent",

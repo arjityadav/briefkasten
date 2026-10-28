@@ -101,3 +101,78 @@ def test_fixed_date_overdue_and_urgency():
     assert r.status == "overdue" and r.days_left == -8
     assert urgency([r]) == "overdue"
     assert urgency([]) == "none"
+
+
+# --------------------------------------------------------------------------- formal service and notice periods
+
+
+def _rule(**kw):
+    from briefkasten.models import DeadlineRule, ExtractedDeadline
+
+    return ExtractedDeadline(id="x", purpose="x", kind="right_to_object", rule=DeadlineRule(**kw), quote="")
+
+
+def _resolve(rule, **kw):
+    from briefkasten.tools.deadlines import resolve_deadline
+
+    args = {"letter_date": date(2026, 11, 3), "received_on": None, "state": "BW", "today": date(2026, 11, 10)} | kw
+    return resolve_deadline(rule, **args)
+
+
+def test_formal_service_counts_from_envelope_date():
+    r = _resolve(_rule(kind="after_service", weeks=2), received_on=date(2026, 11, 6))
+    assert r.due_date == date(2026, 11, 20) and r.basis == "computed"
+
+
+def test_formal_service_end_on_saturday_moves_to_monday():
+    r = _resolve(_rule(kind="after_service", weeks=2), received_on=date(2026, 11, 7))
+    assert r.due_date == date(2026, 11, 23)
+    assert any("§ 222(2) ZPO" in s for s in r.steps)
+
+
+def test_formal_service_without_envelope_date_uses_earliest_start():
+    r = _resolve(_rule(kind="after_service", weeks=2))
+    assert r.due_date == date(2026, 11, 17) and r.basis == "estimated"  # letter date + 2 weeks: never too late
+    assert any("yellow envelope" in s for s in r.steps)
+
+
+def test_notice_period_before_contract_end():
+    r = _resolve(_rule(kind="before_date", months=3, reference_date=date(2026, 12, 31)))
+    assert r.due_date == date(2026, 9, 30) and r.basis == "computed"
+
+
+def test_notice_period_is_not_moved_for_weekends():
+    r = _resolve(_rule(kind="before_date", months=1, reference_date=date(2027, 2, 28)))
+    assert r.due_date == date(2027, 1, 31)  # a Sunday: stays, with advice to send earlier
+    assert any("not extended" in s for s in r.steps)
+    r = _resolve(_rule(kind="before_date", weeks=4, reference_date=date(2027, 1, 31)))
+    assert r.due_date == date(2027, 1, 3)
+
+
+def test_before_date_without_reference_is_unknown():
+    r = _resolve(_rule(kind="before_date", months=3))
+    assert r.due_date is None and r.basis == "unknown"
+
+
+@pytest.mark.parametrize(
+    "gold_name, rules",
+    [
+        ("jobcenter_erstattung", {"payment": {"kind": "fixed_date", "fixed_date": "2026-11-30"}, "right_to_object": {"kind": "after_notification", "months": 1}}),
+        ("mahnbescheid", {"right_to_object": {"kind": "after_service", "weeks": 2}}),
+        ("bussgeldbescheid", {"right_to_object": {"kind": "after_service", "weeks": 2}}),
+        ("auslaenderbehoerde_termin", {"appointment": {"kind": "fixed_date", "fixed_date": "2026-11-24"}}),
+    ],
+)
+def test_gold_labels_match_the_calculator(gold_name, rules):
+    """The hand-computed answers in samples/gold agree with the deadline rules a correct extraction would give."""
+    import json
+
+    from briefkasten.demo import SAMPLES
+    from briefkasten.models import DeadlineRule, ExtractedDeadline
+
+    gold = json.loads((SAMPLES / "gold" / f"{gold_name}.json").read_text(encoding="utf-8"))
+    received = date.fromisoformat(gold["received_on"]) if gold["received_on"] else None
+    for kind, rule in rules.items():
+        dl = ExtractedDeadline(id=kind, purpose=kind, kind=kind, rule=DeadlineRule(**rule), quote="")
+        r = resolve_deadline(dl, letter_date=date.fromisoformat(gold["letter_date"]), received_on=received, state=gold["bundesland"], today=date(2026, 10, 28))
+        assert str(r.due_date) == gold["due_dates"][kind], (gold_name, kind, r.steps)

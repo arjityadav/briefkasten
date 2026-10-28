@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 BRIEFKASTEN_DATA_DIR=/data BRIE
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir ".[web,scans]" && useradd --create-home app && mkdir /data && chown app /data
+RUN pip install --no-cache-dir ".[web,scans,photos]" && useradd --create-home app && mkdir /data && chown app /data
 
 USER app
 VOLUME ["/data"]

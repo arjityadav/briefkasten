@@ -12,7 +12,12 @@ Rules implemented:
   (§ 108(3) AO; the courts apply the same idea to other agencies).
 - Periods: §§ 187(1), 188(2)/(3) BGB (a month ends on the same day number, or the last
   day of a shorter month).
-- A period ending on a weekend or holiday ends on the next working day (§ 193 BGB, § 108(3) AO).
+- A period ending on a weekend or holiday ends on the next working day (§ 193 BGB, § 108(3) AO,
+  § 222(2) ZPO, § 43(2) StPO).
+- Formal service (Zustellung with a Zustellungsurkunde, the yellow envelope): the period starts on
+  the delivery date written on the envelope, not on a notification fiction (§§ 180, 182 ZPO).
+- Notice periods before a date (contracts): counted backwards from the reference date. They are not
+  moved for weekends or holidays (case law: § 193 BGB does not apply to notice periods).
 
 Where the law leaves room (actual later receipt, missing letter date) the calculator
 chooses the earlier, safer date and says so.
@@ -88,6 +93,19 @@ def add_period(start: date, months: int, weeks: int, days: int, steps: list[str]
     return end
 
 
+def subtract_period(end: date, months: int, weeks: int, days: int, steps: list[str]) -> date:
+    """Last day a notice must arrive so that a period of this length still fits before `end` (inclusive)."""
+    start = add_months(end + timedelta(days=1), -months) if months else end + timedelta(days=1)
+    start -= timedelta(weeks=weeks, days=days)
+    due = start - timedelta(days=1)
+    parts = [f"{n} {unit}{'s' if n != 1 else ''}" for n, unit in ((months, "month"), (weeks, "week"), (days, "day")) if n]
+    steps.append(
+        f"A notice period of {' + '.join(parts) or '0 days'} ending on {fmt(end)} must start by {fmt(start)}, "
+        f"so the notice has to reach the other side by {fmt(due)}."
+    )
+    return due
+
+
 def _status(due: date | None, today: date) -> tuple[int | None, str]:
     if due is None:
         return None, "unknown"
@@ -128,6 +146,34 @@ def resolve_deadline(
                 steps.append(f"You received it on {fmt(received_on)}, but the legal delivery date still applies.")
             end = add_period(start, rule.months, rule.weeks, rule.days, steps)
             due, basis = _roll_forward(end, state, steps, "§ 193 BGB / § 108(3) AO"), "computed"
+    elif rule.kind == "after_service":
+        if received_on:
+            start, basis = received_on, "computed"
+            steps.append(f"Formally served (Zustellung) on {fmt(received_on)}, the date on the envelope; the period starts then.")
+        elif letter_date:
+            start, basis = letter_date, "estimated"
+            steps.append(
+                "This document was formally served (yellow envelope). The deadline counts from the delivery date "
+                f"written on the envelope, which is not known here. The letter date {fmt(letter_date)} is used as the "
+                "earliest possible start, so the real deadline is probably a few days later. Give the envelope date "
+                "with --received for the exact deadline."
+            )
+        else:
+            start = None
+            steps.append("The delivery date is unknown: look for it on the yellow envelope and give it with --received.")
+        if start:
+            end = add_period(start, rule.months, rule.weeks, rule.days, steps)
+            due = _roll_forward(end, state, steps, "§ 222(2) ZPO / § 43(2) StPO")
+    elif rule.kind == "before_date":
+        if rule.reference_date:
+            due, basis = subtract_period(rule.reference_date, rule.months, rule.weeks, rule.days, steps), "computed"
+            if due.weekday() >= 5 or holiday_name(due, state):
+                steps.append(
+                    f"{fmt(due)} is {_why_not_working(due, state)}, but notice periods are not extended: "
+                    "send it earlier so it arrives in time."
+                )
+        else:
+            steps.append("The date this notice period counts back from (e.g. the contract end) is unknown.")
     else:  # after_receipt
         if received_on:
             start, basis = received_on, "computed"

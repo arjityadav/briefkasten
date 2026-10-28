@@ -1,0 +1,14 @@
+{
+  "letter": "mahnbescheid.txt",
+  "bundesland": "BW",
+  "received_on": "2026-11-06",
+  "sender_type": "court_or_bailiff",
+  "doc_type": "court_document",
+  "is_official_decision": true,
+  "letter_date": "2026-11-03",
+  "due_dates": {
+    "right_to_object": "2026-11-20"
+  },
+  "amounts_you_pay": [335.62],
+  "_note": "Formal service: envelope date Fri 06.11.2026 + 2 weeks = Fri 20.11.2026 (§ 692 ZPO, § 222 ZPO). amounts_you_pay must contain the total; itemised amounts may be listed too."
+}

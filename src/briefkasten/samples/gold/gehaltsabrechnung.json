@@ -1,0 +1,11 @@
+{
+  "letter": "gehaltsabrechnung.txt",
+  "bundesland": "BW",
+  "received_on": null,
+  "sender_type": "employer",
+  "doc_type": "payslip",
+  "due_dates": {},
+  "amounts_you_pay": [],
+  "analysis": {"family": "payslip", "gross": 3850.00, "net": 2454.60, "payout": 2414.60},
+  "_note": "3850.00 - 561.87 tax - 833.53 social insurance = 2454.60 net; - 40.00 VWL = 2414.60 payout."
+}

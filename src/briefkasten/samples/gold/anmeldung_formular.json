@@ -1,0 +1,10 @@
+{
+  "letter": "anmeldung_formular.txt",
+  "bundesland": "BW",
+  "received_on": null,
+  "doc_type": "form_to_fill",
+  "due_dates": {},
+  "amounts_you_pay": [],
+  "analysis": {"family": "form", "min_fields": 10},
+  "_note": "The two-week deadline counts from the move-in date, which the form does not state, so no due date can be computed."
+}

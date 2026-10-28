@@ -7,7 +7,18 @@ which may ask the Explainer to revise; they never block the run.
 
 from __future__ import annotations
 
-from ..models import CriticReport, Explanation, Extraction, Issue, TraceEvent, Triage
+from ..models import (
+    ContractAnalysis,
+    CriticReport,
+    DocumentAnalysis,
+    Explanation,
+    Extraction,
+    FormGuide,
+    Issue,
+    PayslipAnalysis,
+    TraceEvent,
+    Triage,
+)
 from ..tools.grounding import amount_in_text, date_in_text, quote_in_text
 from .base import LETTER_RULES, Agent, letter_search_tool, wrap_letter
 
@@ -62,6 +73,20 @@ def check_grounding(extraction: Extraction, letter: str, triage: Triage | None) 
                 )
         elif not (r.months or r.weeks or r.days):
             issues.append(Issue(severity="error", source="consistency", field=f, message=f"{f}: a relative deadline needs a period length"))
+        if r.kind == "before_date":
+            if r.reference_date is None:
+                issues.append(
+                    Issue(severity="error", source="consistency", field=f, message=f"{f}: before_date needs the reference_date it counts back from")
+                )
+            elif not date_in_text(r.reference_date, letter):
+                issues.append(
+                    Issue(
+                        severity="warning",
+                        source="grounding",
+                        field=f,
+                        message=f"{f}: reference date {r.reference_date:%d.%m.%Y} is not written in the document (worked out by the model); check it",
+                    )
+                )
         if r.kind == "after_notification" and extraction.letter_date is None:
             issues.append(
                 Issue(severity="warning", source="consistency", field=f, message=f"{f}: needs the letter date, which was not found")
@@ -98,6 +123,71 @@ def check_grounding(extraction: Extraction, letter: str, triage: Triage | None) 
                 message="Official decision without an instruction on legal remedies: the objection period may be longer (often one year). Check with an advisor.",
             )
         )
+    return issues, checked
+
+
+PAYSLIP_TOLERANCE = 1.00  # euros; payslips round each line
+
+
+def check_analysis(analysis: DocumentAnalysis, letter: str) -> tuple[list[Issue], int]:
+    """Grounding and arithmetic checks for payslip, contract and form analyses."""
+    issues: list[Issue] = []
+    checked = 0
+
+    def err(field: str, message: str, source: str = "grounding", severity: str = "error") -> None:
+        issues.append(Issue(severity=severity, source=source, field=field, message=f"{field}: {message}"))
+
+    def quote(field: str, text: str | None) -> None:
+        nonlocal checked
+        if not text:
+            return err(field, "no supporting quote given")
+        checked += 1
+        if not quote_in_text(text, letter):
+            err(field, f'quote not found in the document: "{text[:120]}"')
+
+    def amount(field: str, value: float | None) -> None:
+        if value is not None and not amount_in_text(value, letter):
+            err(field, f"amount {value:.2f} does not appear in the document")
+
+    if isinstance(analysis, PayslipAnalysis):
+        quote("gross", analysis.gross_quote)
+        quote("net", analysis.net_quote)
+        amount("gross", analysis.gross)
+        amount("net", analysis.net)
+        if analysis.payout is not None:
+            quote("payout", analysis.payout_quote)
+            amount("payout", analysis.payout)
+        for i, line in enumerate(analysis.lines):
+            quote(f"lines[{i}]", line.quote)
+            amount(f"lines[{i}]", line.amount)
+        statutory = sum(l.amount for l in analysis.lines if l.category in ("tax", "social_insurance"))
+        if abs(analysis.gross - statutory - analysis.net) > PAYSLIP_TOLERANCE:
+            err(
+                "net",
+                f"gross {analysis.gross:.2f} minus taxes and social insurance {statutory:.2f} is "
+                f"{analysis.gross - statutory:.2f}, not net {analysis.net:.2f}. A line is missing or in the wrong category",
+                source="consistency",
+            )
+        if analysis.payout is not None:
+            after = sum(-l.amount if l.category == "other_deduction" else l.amount for l in analysis.lines if l.category in ("other_deduction", "addition"))
+            if abs(analysis.net + after - analysis.payout) > PAYSLIP_TOLERANCE:
+                err(
+                    "payout",
+                    f"net {analysis.net:.2f} with other deductions/additions {after:+.2f} is {analysis.net + after:.2f}, "
+                    f"not payout {analysis.payout:.2f}",
+                    source="consistency",
+                )
+    elif isinstance(analysis, ContractAnalysis):
+        for group in ("key_terms", "watch_out"):
+            for i, c in enumerate(getattr(analysis, group)):
+                quote(f"{group}[{i}]", c.quote)
+        if analysis.start_date and not date_in_text(analysis.start_date, letter):
+            err("start_date", f"{analysis.start_date:%d.%m.%Y} does not appear in the document")
+        if analysis.end_date and not date_in_text(analysis.end_date, letter):
+            err("end_date", f"{analysis.end_date:%d.%m.%Y} is not written in the document (worked out); check it", severity="warning")
+    elif isinstance(analysis, FormGuide):
+        for i, f in enumerate(analysis.fields):
+            quote(f"fields[{i}]", f.label)
     return issues, checked
 
 

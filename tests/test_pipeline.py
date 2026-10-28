@@ -357,3 +357,75 @@ def test_progress_reports_every_step_live(settings):
     problems = [e for e in rec.events if e[0] == "problem"]
     assert len(problems) == 1 and problems[0][1] == "extractor" and "283.47" in problems[0][2]
     assert bk.store.load(state.run_id).trace == state.trace  # the live trace saves like a plain list
+
+
+# --------------------------------------------------------------------------- non-letter documents
+
+
+def test_payslip_is_routed_to_its_specialist_and_the_maths_is_checked(settings):
+    state, llm = run_with(settings, "gehaltsabrechnung")
+    assert state.status == "done", state.error
+    assert [e.tool_calls for e in steps(state, "supervisor")][1] == ["explain_letter", "analyse_payslip"]
+    assert "extractor" not in {e.agent for e in state.trace}  # a payslip needs no deadline extraction
+    a = state.analysis
+    assert a.family == "payslip" and (a.gross, a.net, a.payout) == (3850.0, 2454.6, 2414.6)
+    first = steps(state, "payslip")[0]
+    assert "Rejected" in first.note and "not net 2454.60" in first.note  # code caught the wrong category
+    assert state.verification.passed and any("wrong category" in r for r in state.verification.repaired)
+
+
+def test_contract_gets_cancel_by_date_and_clause_analysis(settings):
+    state, _ = run_with(settings, "handyvertrag")
+    assert state.status == "done", state.error
+    assert state.analysis.family == "contract" and len(state.analysis.watch_out) == 2
+    (cancel,) = state.deadlines
+    assert cancel.due_date == date(2027, 1, 31) and any("not extended" in s for s in cancel.steps)
+    assert state.verification.passed
+
+
+def test_supervisor_must_use_the_specialist_that_fits(settings):
+    spec = replay_spec("gehaltsabrechnung")
+    state, _ = run_with(
+        settings,
+        "gehaltsabrechnung",
+        supervisor=[
+            call("triage_letter"),
+            call("analyse_contract"),  # wrong specialist for a payslip
+            call("explain_letter"),
+            submit({"notes": "done"}),  # refused: the payslip analysis is missing
+            call("review_explanation"),
+            call("analyse_payslip"),
+            submit({"notes": "done"}),
+        ],
+        payslip=spec["responses"]["payslip"][-1:],
+    )
+    assert state.status == "done", state.error
+    notes = [e.note or "" for e in steps(state, "supervisor")]
+    assert "classified this document as payslip, not a contract" in notes[1]
+    assert "this is a payslip, but analyse_payslip has not run" in notes[3]
+    assert "contract" not in {e.agent for e in state.trace}
+
+
+def test_form_fields_must_exist_on_the_form(settings):
+    spec = replay_spec("finanzamt_bescheid")
+    letter = (SAMPLES / "letters" / "anmeldung_formular.txt").read_text(encoding="utf-8")
+    field = lambda label: {"label": label, "explanation_en": "x", "what_to_enter": "x", "required": True}
+    guide = {"form_name": "Anmeldung", "purpose_en": "Register your address.", "fields": [field("Tag des Einzugs"), field("Religionsgesellschaft")],
+             "attachments": ["Wohnungsgeberbestätigung"], "watch_out": ["Religion decides church tax."]}
+    invented = dict(guide, fields=guide["fields"] + [field("Steuer-Identifikationsnummer")])
+    triage = {"sender_type": "city_or_registration_office", "doc_type": "form_to_fill", "is_official_decision": False,
+              "needs_response": True, "confidence": 0.9, "reasoning": "Registration form."}
+    responses = {
+        "supervisor": [call("triage_letter"), calls("explain_letter", "extract_facts", "guide_form"),
+                       calls("compute_deadlines", "review_explanation"), submit({"notes": "ok"})],
+        "triage": [submit(triage)],
+        "explainer": spec["responses"]["explainer"],
+        "extractor": [submit({"deadlines": [], "amounts": [], "references": [], "actions": []})],
+        "critic": [submit({})],
+        "form": [submit(invented), submit(guide)],
+    }
+    llm = ScriptedLLM(responses)
+    state = Briefkasten(LLMRouter(llm, llm), settings).process(letter, today=TODAY)
+    assert state.status == "done" and state.draft is None, state.error  # a form needs no reply letter
+    assert "Steuer-Identifikationsnummer" in steps(state, "form")[0].note
+    assert [f.label for f in state.analysis.fields] == ["Tag des Einzugs", "Religionsgesellschaft"]

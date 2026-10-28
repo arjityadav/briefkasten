@@ -1,0 +1,14 @@
+{
+  "letter": "auslaenderbehoerde_termin.txt",
+  "bundesland": "BW",
+  "received_on": null,
+  "sender_type": "immigration_office",
+  "doc_type": "appointment_or_invitation",
+  "is_official_decision": false,
+  "letter_date": "2026-10-27",
+  "due_dates": {
+    "appointment": "2026-11-24"
+  },
+  "amounts_you_pay": [98.00],
+  "_note": "The cancellation deadline 17.11.2026 may also be extracted (action_required); it is optional for scoring."
+}
