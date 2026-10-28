@@ -1,32 +1,27 @@
-"""The supervisor: runs the agents as a small state machine and owns the approval gate.
+"""Entry point: intake and redaction, then hands the run to the Supervisor agent; owns the approval gate.
 
-    intake -> redact -> triage -> (explainer || extractor) -> deadline tool -> verifier
-                                         ^                                        |
-                                         +------ feedback on grounding errors ----+
-           -> critic -> [drafter if a reply is needed] -> awaiting human approval -> export
+    intake -> redact -> Supervisor (LLM) --delegates--> triage | explainer || extractor | deadlines | critic | drafter
+                                                   <-- summaries, verifier errors, critic findings --+
+           -> awaiting human approval -> export
 
-Agents never talk to each other directly; they read from and write to RunState, and the
-supervisor decides what runs next. That keeps every step inspectable and replayable.
+The Supervisor decides what runs and when; each specialist runs its own tool loop. What
+stays in plain code: redaction before any model call, the deterministic deadline maths,
+grounding checks, call budgets, and the human approval gate.
 """
 
 from __future__ import annotations
 
-import re
 import secrets
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 
-from .agents import CriticAgent, DrafterAgent, ExplainerAgent, ExtractorAgent, TriageAgent, check_grounding
+from .agents import CriticAgent, DrafterAgent, ExplainerAgent, ExtractorAgent, SupervisorAgent, TriageAgent, Workspace
 from .config import Settings
 from .documents import load_document
 from .llm import LLMRouter
-from .models import REPLY_INTENTS, Issue, ReplyDraft, RunState, TraceEvent, Verification
+from .models import REPLY_INTENTS, RunState, TraceEvent, Verification
 from .store import RunStore
-from .tools.deadlines import resolve_deadline, urgency
 from .tools.holidays_de import STATES
-from .tools.redact import PLACEHOLDER, Redactor, restore
-
-EDITORIAL_PLACEHOLDER = re.compile(r"\[[^\]\n]{2,80}\]")
+from .tools.redact import Redactor, open_placeholders, restore
 
 
 class ApprovalError(RuntimeError):
@@ -37,11 +32,6 @@ def new_run_id(now: datetime) -> str:
     return f"{now:%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
 
 
-def open_placeholders(text: str, redactions: dict[str, str]) -> list[str]:
-    """Editorial blanks like [Begründung ergänzen] that a human still has to fill in."""
-    return [m for m in EDITORIAL_PLACEHOLDER.findall(text) if not (PLACEHOLDER.fullmatch(m) and m in redactions)]
-
-
 class Briefkasten:
     def __init__(self, router: LLMRouter, settings: Settings, store: RunStore | None = None):
         if settings.state.upper() not in STATES:
@@ -49,13 +39,17 @@ class Briefkasten:
         self.settings = settings
         self.router = router
         self.store = store or RunStore(settings.data_dir)
-        self.triage = TriageAgent(router)
-        self.explainer = ExplainerAgent(router)
-        self.extractor = ExtractorAgent(router)
-        self.critic = CriticAgent(router)
-        self.drafter = DrafterAgent(router)
+        self.supervisor = SupervisorAgent(
+            router,
+            triage=TriageAgent(router),
+            explainer=ExplainerAgent(router),
+            extractor=ExtractorAgent(router),
+            critic=CriticAgent(router),
+            drafter=DrafterAgent(router),
+            max_extraction_retries=settings.max_extraction_retries,
+        )
 
-    # ------------------------------------------------------------------ pipeline
+    # ------------------------------------------------------------------ run
 
     def process_file(self, data: bytes, filename: str, **kwargs) -> RunState:
         intake_trace: list[TraceEvent] = []
@@ -91,81 +85,26 @@ class Briefkasten:
             redactions=redacted.mapping,
             trace=list(extra_trace or []),
         )
-        letter = state.text_redacted
+        ws = Workspace(state)
         try:
-            state.triage = self.triage.run(letter, state.trace)
-
-            # Explaining and extracting are independent, so they run in parallel.
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                f_explain = pool.submit(self.explainer.run, letter, state.triage, state.trace)
-                f_extract = pool.submit(self.extractor.run, letter, state.triage, state.trace)
-                state.explanation = f_explain.result()
-                state.extraction = f_extract.result()
-
-            # Verify -> feed errors back to the extractor -> verify again (bounded).
-            rounds, repaired = 0, []
-            while True:
-                rounds += 1
-                issues, checked = check_grounding(state.extraction, letter, state.triage)
-                errors = [i for i in issues if i.severity == "error"]
-                if not errors or rounds > self.settings.max_extraction_retries:
-                    break
-                repaired += [e.message for e in errors]
-                state.extraction = self.extractor.run(
-                    letter, state.triage, state.trace, feedback=[e.message for e in errors]
-                )
-                state.trace[-1].note = f"re-extraction after {len(errors)} verifier error(s)"
-
-            self._resolve_deadlines(state)
-            critic_issues = self.critic.run(letter, state.explanation, state.trace)
-            all_issues: list[Issue] = issues + critic_issues
-            state.verification = Verification(
-                passed=not any(i.severity == "error" for i in all_issues),
-                issues=all_issues,
-                quotes_checked=checked,
-                extraction_rounds=rounds,
-                repaired=repaired,
-            )
-
-            if reply_intent or state.triage.needs_response:
-                out = self.drafter.run(
-                    letter,
-                    triage=state.triage,
-                    explanation=state.explanation,
-                    extraction=state.extraction,
-                    deadlines=state.deadlines,
-                    intent=reply_intent,
-                    trace=state.trace,
-                )
-                if out.intent not in REPLY_INTENTS:
-                    out.intent = reply_intent or "ask_for_clarification"
-                state.draft = ReplyDraft(**out.model_dump())
-                state.status = "awaiting_approval"
-            else:
-                state.status = "done"
+            report = self.supervisor.run(ws, state.trace)
+            state.supervisor_notes = report.notes
+            state.status = "awaiting_approval" if state.draft else "done"
         except Exception as e:  # keep partial results for inspection
             state.status = "failed"
             state.error = f"{type(e).__name__}: {e}"
         finally:
+            if state.extraction:
+                issues = ws.grounding + ws.critic
+                state.verification = Verification(
+                    passed=not any(i.severity == "error" for i in issues),
+                    issues=issues,
+                    quotes_checked=ws.quotes_checked,
+                    extraction_rounds=ws.extraction_rounds,
+                    repaired=ws.repaired,
+                )
             self.store.save(state)
         return state
-
-    def _resolve_deadlines(self, state: RunState) -> None:
-        ex = state.extraction
-        state.deadlines = sorted(
-            (
-                resolve_deadline(
-                    d,
-                    letter_date=ex.letter_date,
-                    received_on=state.received_on,
-                    state=state.bundesland,
-                    today=state.today,
-                )
-                for d in ex.deadlines
-            ),
-            key=lambda r: (r.due_date is None, r.due_date or date.max),
-        )
-        state.urgency = urgency(state.deadlines)
 
     # ------------------------------------------------------------------ human in the loop
 

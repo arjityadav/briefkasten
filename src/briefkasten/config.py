@@ -21,16 +21,37 @@ def load_dotenv(path: str | Path = ".env") -> None:
         os.environ.setdefault(key.strip(), value)
 
 
+# provider -> (smart, fast, vision) defaults; vision None means the smart model reads images
+DEFAULT_MODELS: dict[str, tuple[str, str, str | None]] = {
+    "anthropic": ("claude-sonnet-5-5", "claude-haiku-5-5", None),
+    "groq": ("openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"),  # gpt-oss is text-only
+    "openai": ("llama3.1", "llama3.1", None),
+}
+
+
+def _infer_provider(env) -> str:
+    """Pick a provider from whichever credentials are present when BRIEFKASTEN_PROVIDER is unset."""
+    if env.get("GROQ_API_KEY"):
+        return "groq"
+    if env.get("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    if env.get("OPENAI_API_KEY") or env.get("OPENAI_BASE_URL"):
+        return "openai"
+    return "anthropic"
+
+
 def _split_terms(value: str) -> list[str]:
     return [t.strip() for t in value.split(";") if t.strip()]
 
 
 @dataclass
 class Settings:
-    provider: str = "anthropic"  # anthropic | openai
+    provider: str = "anthropic"  # anthropic | groq | openai
     model: str = "claude-sonnet-5-5"  # used by reasoning-heavy agents
     model_fast: str = "claude-haiku-5-5"  # used by triage and the critic
+    model_vision: str | None = None  # used to transcribe scans and photos; None means `model`
     anthropic_api_key: str | None = None
+    groq_api_key: str | None = None
     openai_base_url: str = "http://localhost:11434/v1"  # Ollama by default
     openai_api_key: str | None = None
     state: str = "BW"  # Bundesland, decides which public holidays apply
@@ -44,14 +65,22 @@ class Settings:
     def from_env(cls, **overrides) -> "Settings":
         load_dotenv()
         env = os.environ
-        provider = env.get("BRIEFKASTEN_PROVIDER", "anthropic")
-        default_model = "claude-sonnet-5-5" if provider == "anthropic" else "llama3.1"
-        default_fast = "claude-haiku-5-5" if provider == "anthropic" else default_model
+        provider = env.get("BRIEFKASTEN_PROVIDER") or _infer_provider(env)
+        groq_key = env.get("GROQ_API_KEY")
+        if provider == "openai" and "api.groq.com" in env.get("OPENAI_BASE_URL", ""):
+            # Groq configured through the generic OPENAI_* variables: use the Groq provider and its tuning.
+            provider, groq_key = "groq", groq_key or env.get("OPENAI_API_KEY")
+        default_model, default_fast, default_vision = DEFAULT_MODELS.get(provider, DEFAULT_MODELS["openai"])
+        model = env.get("BRIEFKASTEN_MODEL") or env.get("OPENAI_MODEL")
+        # Without an explicit fast model, Groq keeps its small model; elsewhere the chosen model does both jobs.
+        fast_fallback = default_fast if provider == "groq" else (model or default_fast)
         s = cls(
             provider=provider,
-            model=env.get("BRIEFKASTEN_MODEL", default_model),
-            model_fast=env.get("BRIEFKASTEN_MODEL_FAST", env.get("BRIEFKASTEN_MODEL", default_fast)),
+            model=model or default_model,
+            model_fast=env.get("BRIEFKASTEN_MODEL_FAST") or fast_fallback,
+            model_vision=env.get("BRIEFKASTEN_MODEL_VISION", default_vision),
             anthropic_api_key=env.get("ANTHROPIC_API_KEY"),
+            groq_api_key=groq_key,
             openai_base_url=env.get("OPENAI_BASE_URL", "http://localhost:11434/v1"),
             openai_api_key=env.get("OPENAI_API_KEY"),
             state=env.get("BRIEFKASTEN_STATE", "BW").upper(),

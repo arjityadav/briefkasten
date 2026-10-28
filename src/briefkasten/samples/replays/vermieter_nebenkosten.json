@@ -1,97 +1,264 @@
 {
-  "_comment": "Recorded agent replies for `briefkasten demo vermieter_nebenkosten`. The first extraction contains a wrong amount on purpose, to show the verifier sending it back.",
+  "_comment": "Recorded model turns for `briefkasten demo vermieter_nebenkosten`. The extractor first submits a transposed amount; the verifier inside its submit tool rejects it, and the agent searches the letter and fixes it.",
   "letter": "vermieter_nebenkosten.txt",
   "intent": null,
   "responses": {
+    "supervisor": [
+      {
+        "text": "I'll start by classifying the letter.",
+        "tool_calls": [
+          {
+            "name": "triage_letter",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "text": "A landlord's service-charge statement. Explaining and extracting are independent, so both run in parallel.",
+        "tool_calls": [
+          {
+            "name": "explain_letter",
+            "input": {}
+          },
+          {
+            "name": "extract_facts",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "text": "The extractor corrected a wrong amount after its verifier rejected it; nothing remains. Next: due dates and a review of the explanation.",
+        "tool_calls": [
+          {
+            "name": "compute_deadlines",
+            "input": {}
+          },
+          {
+            "name": "review_explanation",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "text": "Triage says no reply is needed and the user did not ask for one, so the work is complete.",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "notes": "Explained the statement and computed the payment and objection deadlines. The extractor initially misread the balance (283.47 instead of 238.47) and corrected it after the verifier flagged it. No reply is needed."
+            }
+          }
+        ]
+      }
+    ],
     "triage": [
       {
-        "sender_type": "landlord_or_property_manager",
-        "sender_name": "Hausverwaltung Beispiel GmbH",
-        "doc_type": "invoice_or_statement",
-        "language": "de",
-        "is_official_decision": false,
-        "needs_response": false,
-        "confidence": 0.95,
-        "reasoning": "Annual service-charge statement (Betriebskostenabrechnung) from the property manager with a balance to pay."
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "sender_type": "landlord_or_property_manager",
+              "sender_name": "Hausverwaltung Beispiel GmbH",
+              "doc_type": "invoice_or_statement",
+              "language": "de",
+              "is_official_decision": false,
+              "needs_response": false,
+              "confidence": 0.95,
+              "reasoning": "Annual service-charge statement (Betriebskostenabrechnung) from the property manager with a balance to pay."
+            }
+          }
+        ]
       }
     ],
     "explainer": [
       {
-        "summary_en": "Your property manager sent the service-charge statement for 2025. You paid 1,680.00 € in advance, but your share of the costs was 1,918.47 €, so you owe 238.47 €. From 01.01.2027 your monthly advance payment goes up from 140.00 € to 160.00 €.",
-        "key_points": [
-          "Pay 238.47 € within 30 days of receiving the statement, to your usual rent account.",
-          "Your monthly advance payment rises to 160.00 € from January 2027.",
-          "You can inspect the receipts at their office by appointment.",
-          "Objections to the statement must be raised within twelve months of receiving it."
-        ],
-        "if_ignored": null,
-        "glossary": [
-          {"german": "Betriebskostenabrechnung", "english": "annual service-charge statement"},
-          {"german": "Nachzahlung", "english": "additional payment owed"},
-          {"german": "Vorauszahlung", "english": "advance payment"},
-          {"german": "Belege", "english": "receipts / supporting documents"},
-          {"german": "Einwendungen", "english": "objections"}
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "summary_en": "Your property manager sent the service-charge statement for 2025. You paid 1,680.00 € in advance, but your share of the costs was 1,918.47 €, so you owe 238.47 €. From 01.01.2027 your monthly advance payment goes up from 140.00 € to 160.00 €.",
+              "key_points": [
+                "Pay 238.47 € within 30 days of receiving the statement, to your usual rent account.",
+                "Your monthly advance payment rises to 160.00 € from January 2027.",
+                "You can inspect the receipts at their office by appointment.",
+                "Objections to the statement must be raised within twelve months of receiving it."
+              ],
+              "if_ignored": null,
+              "glossary": [
+                {
+                  "german": "Betriebskostenabrechnung",
+                  "english": "annual service-charge statement"
+                },
+                {
+                  "german": "Nachzahlung",
+                  "english": "additional payment owed"
+                },
+                {
+                  "german": "Vorauszahlung",
+                  "english": "advance payment"
+                },
+                {
+                  "german": "Belege",
+                  "english": "receipts / supporting documents"
+                },
+                {
+                  "german": "Einwendungen",
+                  "english": "objections"
+                }
+              ]
+            }
+          }
         ]
       }
     ],
     "extractor": [
       {
-        "letter_date": "2026-10-26",
-        "letter_date_quote": "Stuttgart, 26.10.2026",
-        "deadlines": [
+        "text": "",
+        "tool_calls": [
           {
-            "id": "payment",
-            "purpose": "Pay the service-charge balance",
-            "kind": "payment",
-            "rule": {"kind": "after_receipt", "days": 30},
-            "quote": "innerhalb von 30 Tagen nach Erhalt dieser Abrechnung"
+            "name": "submit",
+            "input": {
+              "letter_date": "2026-10-26",
+              "letter_date_quote": "Stuttgart, 26.10.2026",
+              "deadlines": [
+                {
+                  "id": "payment",
+                  "purpose": "Pay the service-charge balance",
+                  "kind": "payment",
+                  "rule": {
+                    "kind": "after_receipt",
+                    "days": 30
+                  },
+                  "quote": "innerhalb von 30 Tagen nach Erhalt dieser Abrechnung"
+                }
+              ],
+              "amounts": [
+                {
+                  "value": 283.47,
+                  "purpose": "Service-charge balance to pay",
+                  "direction": "you_pay",
+                  "quote": "Nachzahlung: 283,47 €"
+                }
+              ],
+              "references": [],
+              "actions": [],
+              "has_legal_remedy_notice": false
+            }
           }
-        ],
-        "amounts": [
-          {"value": 283.47, "purpose": "Service-charge balance to pay", "direction": "you_pay", "quote": "Nachzahlung: 283,47 €"}
-        ],
-        "references": [],
-        "actions": [],
-        "has_legal_remedy_notice": false
+        ]
       },
       {
-        "letter_date": "2026-10-26",
-        "letter_date_quote": "Stuttgart, 26.10.2026",
-        "deadlines": [
+        "text": "The verifier says 283.47 does not appear in the letter. I may have transposed digits; let me check 238,47.",
+        "tool_calls": [
           {
-            "id": "payment",
-            "purpose": "Pay the service-charge balance of 238.47 €",
-            "kind": "payment",
-            "rule": {"kind": "after_receipt", "days": 30},
-            "quote": "innerhalb von 30 Tagen nach Erhalt dieser Abrechnung"
-          },
-          {
-            "id": "objection",
-            "purpose": "Raise objections to the statement",
-            "kind": "right_to_object",
-            "rule": {"kind": "after_receipt", "months": 12},
-            "quote": "Einwendungen gegen die Abrechnung sind spätestens bis zum Ablauf des zwölften Monats nach Zugang dieser Abrechnung mitzuteilen."
+            "name": "find_in_letter",
+            "input": {
+              "text": "238,47"
+            }
           }
-        ],
-        "amounts": [
-          {"value": 238.47, "purpose": "Service-charge balance to pay", "direction": "you_pay", "quote": "Nachzahlung: 238,47 €"},
-          {"value": 1918.47, "purpose": "Your share of the 2025 service charges", "direction": "info", "quote": "Ihr Anteil an den Betriebskosten: 1.918,47 €"},
-          {"value": 1680.0, "purpose": "Advance payments made in 2025", "direction": "info", "quote": "Ihre Vorauszahlungen 2025: 1.680,00 €"},
-          {"value": 160.0, "purpose": "New monthly advance payment from 01.01.2027", "direction": "info", "quote": "von 140,00 € auf 160,00 €"}
-        ],
-        "references": [
-          {"label": "Rent account (IBAN)", "value": "[IBAN_1]", "quote": "auf das bekannte Mietkonto (IBAN [IBAN_1])"}
-        ],
-        "actions": [
-          {"description": "Transfer 238.47 € to the rent account", "priority": "high", "quote": "Bitte überweisen Sie den Nachzahlungsbetrag"},
-          {"description": "Raise your standing order for advance payments to 160.00 € from January 2027", "priority": "medium", "quote": "Ab dem 01.01.2027 erhöhen sich Ihre monatlichen Vorauszahlungen"},
-          {"description": "Optionally book an appointment to inspect the receipts", "priority": "low", "quote": "Die Belege können nach vorheriger Terminvereinbarung in unserem Büro eingesehen werden."}
-        ],
-        "has_legal_remedy_notice": false
+        ]
+      },
+      {
+        "text": "238,47 € is in the letter. Resubmitting the corrected and completed extraction.",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "letter_date": "2026-10-26",
+              "letter_date_quote": "Stuttgart, 26.10.2026",
+              "deadlines": [
+                {
+                  "id": "payment",
+                  "purpose": "Pay the service-charge balance of 238.47 €",
+                  "kind": "payment",
+                  "rule": {
+                    "kind": "after_receipt",
+                    "days": 30
+                  },
+                  "quote": "innerhalb von 30 Tagen nach Erhalt dieser Abrechnung"
+                },
+                {
+                  "id": "objection",
+                  "purpose": "Raise objections to the statement",
+                  "kind": "right_to_object",
+                  "rule": {
+                    "kind": "after_receipt",
+                    "months": 12
+                  },
+                  "quote": "Einwendungen gegen die Abrechnung sind spätestens bis zum Ablauf des zwölften Monats nach Zugang dieser Abrechnung mitzuteilen."
+                }
+              ],
+              "amounts": [
+                {
+                  "value": 238.47,
+                  "purpose": "Service-charge balance to pay",
+                  "direction": "you_pay",
+                  "quote": "Nachzahlung: 238,47 €"
+                },
+                {
+                  "value": 1918.47,
+                  "purpose": "Your share of the 2025 service charges",
+                  "direction": "info",
+                  "quote": "Ihr Anteil an den Betriebskosten: 1.918,47 €"
+                },
+                {
+                  "value": 1680.0,
+                  "purpose": "Advance payments made in 2025",
+                  "direction": "info",
+                  "quote": "Ihre Vorauszahlungen 2025: 1.680,00 €"
+                },
+                {
+                  "value": 160.0,
+                  "purpose": "New monthly advance payment from 01.01.2027",
+                  "direction": "info",
+                  "quote": "von 140,00 € auf 160,00 €"
+                }
+              ],
+              "references": [
+                {
+                  "label": "Rent account (IBAN)",
+                  "value": "[IBAN_1]",
+                  "quote": "auf das bekannte Mietkonto (IBAN [IBAN_1])"
+                }
+              ],
+              "actions": [
+                {
+                  "description": "Transfer 238.47 € to the rent account",
+                  "priority": "high",
+                  "quote": "Bitte überweisen Sie den Nachzahlungsbetrag"
+                },
+                {
+                  "description": "Raise your standing order for advance payments to 160.00 € from January 2027",
+                  "priority": "medium",
+                  "quote": "Ab dem 01.01.2027 erhöhen sich Ihre monatlichen Vorauszahlungen"
+                },
+                {
+                  "description": "Optionally book an appointment to inspect the receipts",
+                  "priority": "low",
+                  "quote": "Die Belege können nach vorheriger Terminvereinbarung in unserem Büro eingesehen werden."
+                }
+              ],
+              "has_legal_remedy_notice": false
+            }
+          }
+        ]
       }
     ],
     "critic": [
-      {"unsupported_claims": [], "missing_important_points": []}
+      {
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "submit",
+            "input": {
+              "unsupported_claims": [],
+              "missing_important_points": []
+            }
+          }
+        ]
+      }
     ]
   }
 }

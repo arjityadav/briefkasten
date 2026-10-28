@@ -69,6 +69,9 @@ def render(state: RunState, verbose: bool = False) -> str:
         out.append(_h("German words to know"))
         out += [f"  {g.german} – {g.english}" + (f" ({g.note})" if g.note else "") for g in state.explanation.glossary]
 
+    if state.supervisor_notes:
+        out += [_h("Supervisor"), _wrap(state.supervisor_notes)]
+
     v = state.verification
     if v:
         status = click.style("passed", fg="green") if v.passed else click.style("FAILED", fg="red")
@@ -89,9 +92,18 @@ def render(state: RunState, verbose: bool = False) -> str:
     if state.trace:
         total_ms = sum(e.duration_ms for e in state.trace)
         toks = sum(e.input_tokens + e.output_tokens for e in state.trace)
-        out.append(_h("Agent trace") + click.style(f"  {len(state.trace)} calls · {toks:,} tokens · {total_ms/1000:.1f}s model time", dim=True))
+        agents = len({e.agent for e in state.trace})
+        out.append(
+            _h("Agent trace")
+            + click.style(f"  {agents} agents · {len(state.trace)} steps · {toks:,} tokens · {total_ms/1000:.1f}s model time", dim=True)
+        )
         if verbose:
             for e in state.trace:
-                out.append(f"  {e.agent:<12} {e.model:<22} {e.duration_ms:>6} ms  {e.input_tokens:>6}→{e.output_tokens:<5}" + (f"  {e.note}" if e.note else ""))
+                acts = ", ".join(e.tool_calls) or "-"
+                out.append(f"  {e.agent:<11} {e.duration_ms:>6} ms {e.input_tokens:>6}→{e.output_tokens:<5} → {acts}")
+                if e.thought:
+                    out.append(click.style(_wrap(f"thought: {e.thought}", "      "), dim=True))
+                if e.note:
+                    out.append(click.style(_wrap(f"! {e.note}", "      "), fg="yellow"))
     out.append("\n" + click.style("Briefkasten explains letters; it is not legal or tax advice.", dim=True))
     return "\n".join(out)

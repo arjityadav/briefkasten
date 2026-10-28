@@ -1,18 +1,20 @@
 """Verifier: deterministic grounding checks plus an LLM critic for the explanation.
 
-Grounding errors send the extraction back to the Extractor with feedback (one retry by
-default). Critic findings are reported as warnings; they never block the run.
+check_grounding is the Extractor's `submit` gate: errors go back to the Extractor as tool
+observations to fix (one round by default). Critic findings are reported to the supervisor,
+which may ask the Explainer to revise; they never block the run.
 """
 
 from __future__ import annotations
 
 from ..models import CriticReport, Explanation, Extraction, Issue, TraceEvent, Triage
 from ..tools.grounding import amount_in_text, date_in_text, quote_in_text
-from .base import LETTER_RULES, Agent, wrap_letter
+from .base import LETTER_RULES, Agent, letter_search_tool, wrap_letter
 
 CRITIC_SYSTEM = f"""You are the Critic agent in Briefkasten. You check an English explanation of a German letter for faithfulness.
 List statements in the explanation that the letter does not support (wrong amounts, dates, senders,
 invented consequences), and important content of the letter the explanation omits.
+Check doubtful statements with find_in_letter before listing them.
 General well-known facts (for example how objections work in general) are acceptable and are not unsupported claims.
 If everything is fine, return empty lists.
 
@@ -103,10 +105,13 @@ class CriticAgent(Agent):
     name = "critic"
     tier = "fast"
     max_tokens = 800
+    max_steps = 5
 
     def run(self, letter: str, explanation: Explanation, trace: list[TraceEvent]) -> list[Issue]:
         prompt = f"Explanation to check:\n{explanation.model_dump_json(indent=2)}\n\n{wrap_letter(letter)}"
-        report = self.ask_json(system=CRITIC_SYSTEM, prompt=prompt, schema=CriticReport, trace=trace)
+        report = self.react(
+            system=CRITIC_SYSTEM, prompt=prompt, output=CriticReport, trace=trace, tools=[letter_search_tool(letter)]
+        )
         issues = [Issue(severity="warning", source="critic", field="explanation", message=f"Unsupported: {c}") for c in report.unsupported_claims]
         issues += [Issue(severity="warning", source="critic", field="explanation", message=f"Missing: {m}") for m in report.missing_important_points]
         return issues

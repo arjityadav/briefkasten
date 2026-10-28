@@ -62,3 +62,22 @@ def date_in_text(d: date, text: str) -> bool:
         d.isoformat(),
     }
     return any(re.search(r"(?<!\d)" + re.escape(v) + r"(?!\d)", hay) for v in variants)
+
+
+def search_letter(query: str, text: str, limit: int = 3) -> str:
+    """Tool output for agents: is the query in the letter verbatim, and which lines come closest."""
+    if not query.strip():
+        return "Empty query."
+    found = quote_in_text(query, text)
+    words = set(re.findall(r"\w+", normalize(query)))
+    scored = []
+    for n, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        norm = normalize(line)
+        overlap = len(words & set(re.findall(r"\w+", norm)))
+        if overlap:
+            scored.append((-(overlap + 10 * (normalize(query) in norm)), n, line.strip()))
+    lines = [f"  line {n}: {line}" for _, n, line in sorted(scored)[:limit]]
+    head = "FOUND verbatim in the letter." if found else "NOT found verbatim in the letter."
+    return head + ("\nClosest lines:\n" + "\n".join(lines) if lines else "\nNo similar lines.")

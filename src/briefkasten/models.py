@@ -211,6 +211,8 @@ class TraceEvent(BaseModel):
     duration_ms: int
     input_tokens: int = 0
     output_tokens: int = 0
+    tool_calls: list[str] = Field(default_factory=list, description="Tools the model chose to call in this step")
+    thought: str | None = Field(None, description="The model's reasoning text for this step, if any")
     note: str | None = None
 
 
@@ -235,6 +237,7 @@ class RunState(BaseModel):
     verification: Verification | None = None
     urgency: Literal["overdue", "urgent", "soon", "relaxed", "none"] = "none"
     draft: ReplyDraft | None = None
+    supervisor_notes: str | None = None
     trace: list[TraceEvent] = Field(default_factory=list)
 
     def public_view(self) -> dict:

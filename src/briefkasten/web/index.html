@@ -93,7 +93,7 @@
     </form>
     <div class="card">
       <h2>Try a sample</h2>
-      <p class="muted" style="margin-top:0">Replays recorded agent outputs; redaction, deadline maths, checks and approval run live.</p>
+      <p class="muted" style="margin-top:0">Replays recorded model decisions; every tool, delegation, check and the approval gate run live.</p>
       <div class="row" id="demos"></div>
     </div>
     <div class="card runs"><h2>Recent</h2><div id="runs"><span class="muted">None yet</span></div></div>
@@ -184,6 +184,7 @@ function show(s) {
   if (x?.actions?.length) side.push(`<div class="card"><h2>To do</h2><ul class="points">${x.actions.map((a) => `<li>${a.priority === "high" ? "<strong>" : ""}${esc(a.description)}${a.priority === "high" ? "</strong>" : ""}</li>`).join("")}</ul></div>`);
   if (e?.glossary?.length) side.push(`<div class="card"><h2>German words to know</h2><table>${e.glossary.map((g) => `<tr><td><strong>${esc(g.german)}</strong></td><td>${esc(g.english)}</td></tr>`).join("")}</table></div>`);
   if (v) side.push(`<div class="card"><h2>Checks</h2><p style="margin-top:0">${v.passed ? "✓ Passed" : "✗ Failed"} · ${v.quotes_checked} quotes verified against the letter · ${v.extraction_rounds} extraction round(s)</p>${v.repaired.map((r) => `<div class="issue warning">Repaired: ${esc(r)}</div>`).join("")}${v.issues.map((i) => `<div class="issue ${i.severity}">${esc(i.message)}</div>`).join("")}</div>`);
+  if (s.supervisor_notes) side.push(`<div class="card"><h2>Supervisor</h2><p style="margin-top:0">${esc(s.supervisor_notes)}</p></div>`);
   if (side.length) h += `<div class="grid2">${side.map((c) => `<div>${c}</div>`).join("")}</div>`;
   if (d) {
     const open = d.status === "pending_approval";
@@ -198,7 +199,7 @@ function show(s) {
   }
   if (s.trace.length) {
     const tok = s.trace.reduce((a, ev) => a + ev.input_tokens + ev.output_tokens, 0);
-    h += `<div class="card"><details><summary>Agent trace · ${s.trace.length} calls · ${tok.toLocaleString()} tokens</summary><table><tr><th>Agent</th><th>Model</th><th>ms</th><th>Tokens in → out</th><th></th></tr>${s.trace.map((ev) => `<tr><td>${esc(ev.agent)}</td><td class="muted">${esc(ev.model)}</td><td class="num">${ev.duration_ms}</td><td class="num">${ev.input_tokens} → ${ev.output_tokens}</td><td class="muted">${esc(ev.note || "")}</td></tr>`).join("")}</table></details></div>`;
+    h += `<div class="card"><details><summary>Agent trace · ${new Set(s.trace.map((ev) => ev.agent)).size} agents · ${s.trace.length} steps · ${tok.toLocaleString()} tokens</summary><table><tr><th>Agent</th><th>Thought → action</th><th>ms</th><th>Tokens in → out</th></tr>${s.trace.map((ev) => `<tr><td>${esc(ev.agent)}</td><td>${ev.thought ? `<span class="muted">${esc(ev.thought)}</span><br>` : ""}→ ${esc((ev.tool_calls || []).join(", ") || "-")}${ev.note ? `<div class="issue warning">${esc(ev.note)}</div>` : ""}</td><td class="num">${ev.duration_ms}</td><td class="num">${ev.input_tokens} → ${ev.output_tokens}</td></tr>`).join("")}</table></details></div>`;
   }
   $("#result").innerHTML = h;
   if (d && d.status === "pending_approval") {

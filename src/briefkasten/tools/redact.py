@@ -22,6 +22,12 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("PHONE", re.compile(r"(?<![\w/.,])(?:\+49|0)[\d ()/-]{7,}\d(?!\d|[,.]\d)")),
 ]
 PLACEHOLDER = re.compile(r"\[[A-Z_]+_\d+\]")
+EDITORIAL_PLACEHOLDER = re.compile(r"\[[^\]\n]{2,80}\]")
+
+
+def open_placeholders(text: str, redactions: dict[str, str]) -> list[str]:
+    """Editorial blanks like [Begründung ergänzen] that a human still has to fill in."""
+    return [m for m in EDITORIAL_PLACEHOLDER.findall(text) if not (PLACEHOLDER.fullmatch(m) and m in redactions)]
 
 
 @dataclass
