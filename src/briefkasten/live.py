@@ -19,6 +19,7 @@ COLORS = {
     "critic": "yellow",
     "drafter": "bright_blue",
     "transcriber": "white",
+    "ocr": "white",
 }
 
 

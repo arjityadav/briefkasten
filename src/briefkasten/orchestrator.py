@@ -30,6 +30,7 @@ from .agents import (
 )
 from .config import Settings
 from .documents import load_documents
+from .readers import build_image_reader
 from .llm import LLMRouter
 from .models import REPLY_INTENTS, RunState, TraceEvent, Verification
 from .store import RunStore
@@ -73,9 +74,17 @@ class Briefkasten:
     def process_files(self, files: list[tuple[bytes, str]], progress: Progress | None = None, **kwargs) -> RunState:
         """Several files that make up one document, e.g. one photo per page, in order."""
         intake_trace: list[TraceEvent] = LiveTrace(progress=progress)
-        text = load_documents(files, self.router, intake_trace)
+        used: list[str] = []
+
+        def read_images(images, trace):  # built on first use: text documents never need an image reader
+            used.append(self.settings.image_reader)
+            return build_image_reader(self.settings, self.router)(images, trace)
+
+        text = load_documents(files, read_images, intake_trace)
         name = files[0][1] if len(files) == 1 else f"{files[0][1]} (+{len(files) - 1} more)"
-        return self.process(text, source_name=name, extra_trace=intake_trace, progress=progress, **kwargs)
+        return self.process(
+            text, source_name=name, extra_trace=intake_trace, progress=progress, image_reader=used[0] if used else None, **kwargs
+        )
 
     def process(
         self,
@@ -87,6 +96,7 @@ class Briefkasten:
         today: date | None = None,
         extra_trace: list[TraceEvent] | None = None,
         progress: Progress | None = None,
+        image_reader: str | None = None,
     ) -> RunState:
         """Run the agents on a letter. `progress`, if given, is told about every agent step as it happens."""
         if reply_intent and reply_intent not in REPLY_INTENTS:
@@ -95,7 +105,7 @@ class Briefkasten:
             raise ValueError("The letter is empty")
 
         now = datetime.now()
-        redacted = Redactor(self.settings.redact_terms).redact(text)
+        redacted = Redactor(self.settings.redact_terms, auto=self.settings.auto_redact).redact(text)
         state = RunState(
             run_id=new_run_id(now),
             created_at=now,
@@ -104,11 +114,14 @@ class Briefkasten:
             today=today or date.today(),
             received_on=received_on,
             reply_intent=reply_intent,
+            image_reader=image_reader,
             text_redacted=redacted.text,
             redactions=redacted.mapping,
             trace=list(extra_trace or []),
         )
         state.trace = LiveTrace(state.trace, progress)  # same list type to pydantic, plus live reporting
+        if progress is not None and hasattr(progress, "info"):
+            progress.info(f"Redactor masked {len(redacted.mapping)} personal identifier(s) before any model call")
         ws = Workspace(state)
         try:
             report = self.supervisor.run(ws, state.trace)

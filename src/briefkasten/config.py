@@ -51,7 +51,10 @@ class Settings:
     provider: str = "anthropic"  # anthropic | groq | openai
     model: str = "claude-sonnet-5-5"  # used by reasoning-heavy agents
     model_fast: str = "claude-haiku-5-5"  # used by triage and the critic
-    model_vision: str | None = None  # used to transcribe scans and photos; None means `model`
+    model_vision: str | None = None  # cloud model for scans and photos (image_reader=cloud); None means `model`
+    image_reader: str = "ocr"  # ocr | local_vision | cloud: who reads scans and photos (see readers.py)
+    vision_base_url: str = "http://localhost:11434/v1"  # local OpenAI-compatible server for image_reader=local_vision
+    model_vision_local: str = "qwen2.5vl:7b"
     anthropic_api_key: str | None = None
     groq_api_key: str | None = None
     openai_base_url: str = "http://localhost:11434/v1"  # Ollama by default
@@ -59,6 +62,7 @@ class Settings:
     state: str = "BW"  # Bundesland, decides which public holidays apply
     data_dir: Path = Path(".briefkasten")
     redact_terms: list[str] = field(default_factory=list)
+    auto_redact: bool = True  # also detect unlisted names, street addresses and birthdates
     sender_name: str = ""
     sender_address: str = ""
     max_extraction_retries: int = 1
@@ -91,8 +95,12 @@ class Settings:
             state=env.get("BRIEFKASTEN_STATE", "BW").upper(),
             data_dir=Path(env.get("BRIEFKASTEN_DATA_DIR", ".briefkasten")),
             redact_terms=_split_terms(env.get("BRIEFKASTEN_REDACT_TERMS", "")),
+            auto_redact=env.get("BRIEFKASTEN_AUTO_REDACT", "1").strip().lower() not in ("0", "false", "no", "off"),
             sender_name=env.get("BRIEFKASTEN_SENDER_NAME", ""),
             sender_address=env.get("BRIEFKASTEN_SENDER_ADDRESS", "").replace("\\n", "\n"),
+            image_reader=env.get("BRIEFKASTEN_IMAGE_READER", "ocr").strip().lower(),
+            vision_base_url=env.get("BRIEFKASTEN_VISION_BASE_URL", "http://localhost:11434/v1"),
+            model_vision_local=env.get("BRIEFKASTEN_LOCAL_VISION_MODEL", "qwen2.5vl:7b"),
             demo_only=env.get("BRIEFKASTEN_DEMO_ONLY", "").strip().lower() in ("1", "true", "yes", "on"),
             imprint_url=env.get("BRIEFKASTEN_IMPRINT_URL", ""),
             privacy_url=env.get("BRIEFKASTEN_PRIVACY_URL", ""),

@@ -7,3 +7,5 @@ __pycache__/
 evals/results-*.json
 dist/
 build/
+frontend/node_modules/
+src/briefkasten/web/dist/

@@ -62,3 +62,92 @@ def test_phone_edge_cases():
     assert red("Tel. +49 711 123456.") == "Tel. [PHONE_1]."
     assert red("Betrag 0,00 € am 01.01.2027") == "Betrag 0,00 € am 01.01.2027"
     assert red("Summe 0711,50 €") == "Summe 0711,50 €"
+
+
+def test_ocr_misreadings_and_spelling_variants_are_still_masked():
+    from briefkasten.tools.redact import Redactor, restore
+
+    r = Redactor(["Max Mustermann", "Musterstraße 12"]).redact(
+        "Herrn\nMax Musterrnann\nMusterstrake 12\n70173 Stuttgart\nauch: Musterstr. 12 und MUSTERSTRASSE 12"
+    )
+    for leaked in ("Musterrnann", "Musterstrake", "Musterstr. 12", "MUSTERSTRASSE"):
+        assert leaked not in r.text, r.text
+    assert "70173 Stuttgart" in r.text  # unrelated text stays readable
+    # Fuzzy matches restore to the spelling the user configured, not the OCR's
+    assert sorted(set(restore(r.text, r.mapping).split("\n")[1:3])) == ["Max Mustermann", "Musterstraße 12"]
+
+
+def test_fuzzy_matching_leaves_similar_but_different_words_alone():
+    from briefkasten.tools.redact import Redactor
+
+    text = "Finanzamt Musterstadt, Postfach 10 20 30"
+    assert Redactor(["Mustermann"]).redact(text).text == text
+
+
+# --------------------------------------------------------------------------- automatic detection of unlisted people
+
+FAMILY_LETTER = """AOK Baden-Württemberg
+Presselstraße 19, 70191 Stuttgart
+
+Frau
+Erika Musterfrau
+Lindenweg 7a
+70499 Stuttgart
+
+Fragebogen zur Familienversicherung
+
+Sehr geehrte Frau Musterfrau,
+
+für die Familienversicherung benötigen wir Angaben zu Ihren Angehörigen:
+Ehemann: Jonas Musterfrau, geb. am 14.02.1988
+Kind: Lina Musterfrau, geboren 03.09.2019
+
+Bitte senden Sie den Fragebogen bis zum 20.11.2026 zurück. Lina ist bis zum 18. Lebensjahr beitragsfrei versichert.
+Ihre Ansprechpartnerin, Frau Dr. Yilmaz, erreichen Sie werktags.
+
+Mit freundlichen Grüßen
+Ihre AOK"""
+
+
+def test_unlisted_family_members_addresses_and_birthdates_are_masked():
+    from briefkasten.tools.redact import Redactor, restore
+
+    r = Redactor([]).redact(FAMILY_LETTER)  # nothing listed by the user
+    for secret in ("Erika", "Musterfrau", "Jonas", "Lina", "Lindenweg 7a", "14.02.1988", "03.09.2019", "Yilmaz"):
+        assert secret not in r.text, (secret, r.text)
+    # What the agents need stays: the sender, its public address, the deadline and the salutation
+    for kept in ("AOK Baden-Württemberg", "Presselstraße 19", "20.11.2026", "Sehr geehrte", "70499 Stuttgart"):
+        assert kept in r.text, kept
+    labels = {ph.strip("[]").rsplit("_", 1)[0] for ph in r.mapping}
+    assert labels == {"NAME", "ADDRESS", "BIRTHDATE"}
+    assert restore(r.text, r.mapping) == FAMILY_LETTER
+
+
+def test_detection_leaves_organisations_and_ordinary_text_alone():
+    from briefkasten.tools.redact import Redactor
+
+    text = (
+        "Antragsteller: Fitness Plus GmbH, Industriestraße 4, 70565 Stuttgart\n"
+        "Sehr geehrte Damen und Herren,\nbitte zahlen Sie bis zum 16.11.2026. Der Betrag beträgt 412,00 €."
+    )
+    assert Redactor([]).redact(text).text == text
+
+
+def test_auto_detection_can_be_switched_off():
+    from briefkasten.tools.redact import Redactor
+
+    assert "Jonas" in Redactor([], auto=False).redact(FAMILY_LETTER).text
+
+
+def test_models_never_see_unlisted_family_names(tmp_path):
+    """End to end with no redact terms configured: the agents only ever see placeholders."""
+    from datetime import date
+
+    from briefkasten.config import Settings
+    from briefkasten.demo import load_replay
+    from briefkasten.orchestrator import Briefkasten
+
+    _, _, router = load_replay("finanzamt_bescheid")
+    Briefkasten(router, Settings(data_dir=tmp_path)).process(FAMILY_LETTER, today=date(2026, 10, 28))
+    prompts = " ".join(c["system"] + c["prompt"] for c in router.smart.calls)
+    assert prompts and not any(s in prompts for s in ("Jonas", "Lina", "Erika", "Musterfrau", "Lindenweg", "14.02.1988"))

@@ -1,3 +1,11 @@
+# Build the TypeScript web UI
+FROM node:22-slim AS ui
+WORKDIR /ui
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+RUN npx tsc --noEmit && npx vite build --outDir /ui/dist
+
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -7,6 +15,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 BRIEFKASTEN_DATA_DIR=/data BRIE
 
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY --from=ui /ui/dist ./src/briefkasten/web/dist
 RUN pip install --no-cache-dir ".[web,scans,photos]" && useradd --create-home app && mkdir /data && chown app /data
 
 USER app

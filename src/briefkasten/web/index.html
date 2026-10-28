@@ -208,6 +208,7 @@ function show(s) {
   const t = s.triage, e = s.explanation, x = s.extraction, v = s.verification, d = s.draft;
   let h = `<div class="banner u-${s.urgency}"><span class="badge">${URG[s.urgency]}</span><div><strong>${esc(t?.sender_name || s.source_name)}</strong><div class="muted">${esc(t?.doc_type?.replace(/_/g, " ") || "")} · ${s.redaction_count} identifiers masked · run ${esc(s.run_id)}</div></div></div>`;
   if (s.error) h += `<div class="card error-box">${esc(s.error)}</div>`;
+  if (s.image_reader) h += `<div class="card ${s.image_reader === "cloud" ? "error-box" : ""}"><span class="muted">Scan read by</span> ${esc({ ocr: "local OCR: the image never left the server", local_vision: "a local vision model: the image never left the server", cloud: "the cloud vision model: the unredacted image was sent to the AI provider" }[s.image_reader] || s.image_reader)}</div>`;
   if (e) {
     h += `<div class="card"><h2>What this is</h2><p style="margin-top:0">${esc(e.summary_en)}</p><ul class="points">${e.key_points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>`;
     if (e.if_ignored) h += `<p><strong>If you do nothing:</strong> ${esc(e.if_ignored)}</p>`;

@@ -305,6 +305,7 @@ class RunState(BaseModel):
     today: date
     received_on: date | None = None
     reply_intent: str | None = None
+    image_reader: str | None = Field(None, description="Who read scanned pages or photos: ocr, local_vision or cloud")
     status: Literal["running", "awaiting_approval", "done", "failed"] = "running"
     error: str | None = None
 

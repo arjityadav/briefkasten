@@ -123,7 +123,9 @@ def test_photo_pages_are_transcribed_together_in_order():
     llm = ScriptedLLM({"transcriber": ["Seite 1-4", "Seite 5"]})
     trace = []
     pages = [(_png(i), f"seite{i}.png") for i in range(1, 6)]
-    text = load_documents([(b"Begleitschreiben", "notiz.txt"), *pages], LLMRouter(llm, llm), trace)
+    from briefkasten.readers import vision_reader
+
+    text = load_documents([(b"Begleitschreiben", "notiz.txt"), *pages], vision_reader(LLMRouter(llm, llm)), trace)
     assert text == "Begleitschreiben\n\nSeite 1-4\n\nSeite 5"
     assert [e.agent for e in trace] == ["transcriber", "transcriber"]  # 4 pages per call
     assert trace[0].model == "scripted-replay"
@@ -157,3 +159,85 @@ def test_large_photo_is_downscaled_when_pillow_is_available():
     img = _image(".png", buf.getvalue())
     assert img.media_type == "image/jpeg"
     assert max(PIL.open(io.BytesIO(img.data)).size) == 2048
+
+
+# --------------------------------------------------------------------------- image readers (redaction before any upload)
+
+import os  # noqa: E402
+import stat  # noqa: E402
+
+from briefkasten.readers import ReaderError, build_image_reader, is_local_url, ocr_reader  # noqa: E402
+
+SCAN_TEXT = "Finanzamt Musterstadt\nMax Mustermann\nIBAN DE12 6005 0101 0001 2345 67\nSteuernummer 99/815/08154"
+
+
+def _fake_tesseract(tmp_path, langs=("eng", "deu"), text=SCAN_TEXT):
+    """A stand-in tesseract binary: lists languages, and 'reads' any image as SCAN_TEXT."""
+    path = tmp_path / "tesseract"
+    listing = "".join(f"echo {lang}\n" for lang in langs)
+    path.write_text(
+        "#!/bin/sh\n"
+        f'if [ "$1" = "--list-langs" ]; then\necho "List of available languages ({len(langs)}):"\n{listing}exit 0\nfi\n'
+        "cat > /dev/null\n"
+        f"cat <<'TXT'\n{text}\nTXT\n"
+    )
+    path.chmod(path.stat().st_mode | stat.S_IEXEC)
+    return str(path)
+
+
+def test_ocr_reads_locally_with_german(tmp_path):
+    trace = []
+    text = ocr_reader(_fake_tesseract(tmp_path))([_image_obj()], trace)
+    assert "IBAN DE12" in text
+    assert trace[0].agent == "ocr" and trace[0].model == "tesseract (deu+eng)" and trace[0].note is None
+
+
+def test_ocr_warns_without_german_language_data(tmp_path):
+    trace = []
+    ocr_reader(_fake_tesseract(tmp_path, langs=("eng",)))([_image_obj()], trace)
+    assert trace[0].model == "tesseract (eng)" and "umlauts" in trace[0].note
+
+
+def test_missing_tesseract_explains_the_options(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda _: None)
+    with pytest.raises(ReaderError, match="brew install tesseract"):
+        ocr_reader()
+
+
+def test_local_vision_refuses_remote_servers():
+    assert is_local_url("http://localhost:11434/v1") and is_local_url("http://192.168.1.20:11434/v1")
+    assert not is_local_url("https://api.groq.com/openai/v1")
+    with pytest.raises(ReaderError, match="not a local address"):
+        build_image_reader(Settings(image_reader="local_vision", vision_base_url="https://api.groq.com/openai/v1"), None)
+    with pytest.raises(ReaderError, match="Unknown"):
+        build_image_reader(Settings(image_reader="magic"), None)
+
+
+def test_scan_with_default_ocr_never_reaches_a_model_unredacted(tmp_path, monkeypatch):
+    """End to end: a scanned page is read by local OCR, so no model call ever contains the raw identifiers."""
+    monkeypatch.setattr("shutil.which", lambda _: _fake_tesseract(tmp_path))
+    llm = ScriptedLLM({})  # any model call would fail: none is expected before redaction
+    bk = Briefkasten(LLMRouter(llm, llm), Settings(data_dir=tmp_path / "d", redact_terms=["Max Mustermann"]))
+    trace = []
+    text = load_documents([(_png(1), "scan.png")], lambda imgs, tr: build_image_reader(bk.settings, bk.router)(imgs, tr), trace)
+    assert "DE12 6005" in text and not llm.calls  # the raw text exists only locally
+    from briefkasten.tools.redact import Redactor
+
+    redacted = Redactor(["Max Mustermann"]).redact(text).text
+    for secret in ("DE12 6005", "99/815/08154", "Max Mustermann"):
+        assert secret not in redacted
+
+
+def test_run_records_which_reader_read_the_scan(tmp_path, monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda _: _fake_tesseract(tmp_path))
+    spec_letter, intent, router = load_replay("finanzamt_bescheid")
+    bk = Briefkasten(router, Settings(data_dir=tmp_path / "d", redact_terms=DEMO_REDACT_TERMS))
+    state = bk.process_files([(_png(1), "scan.png")], today=date(2026, 10, 28))
+    assert state.image_reader == "ocr" and state.trace[0].agent == "ocr"
+    assert not any("DE12 6005" in c["prompt"] for c in router.smart.calls)
+
+
+def _image_obj():
+    from briefkasten.llm import Image
+
+    return Image("image/png", _png(1))

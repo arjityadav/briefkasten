@@ -12,19 +12,23 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 
 from .base import ChatResult, Image, LLMError, LLMResult, Message, ToolCall, ToolSpec
 
 
 class ScriptedLLM:
-    def __init__(self, responses: dict[str, list[str | dict]], model: str = "scripted-replay"):
+    def __init__(self, responses: dict[str, list[str | dict]], model: str = "scripted-replay", delay: float = 0.0):
         self.model = model
+        self.delay = delay  # seconds per call, so a replay can be watched live in the web UI
         self._queues = {agent: list(items) for agent, items in responses.items()}
         self._lock = threading.Lock()
         self._ids = 0
         self.calls: list[dict] = []
 
     def _next(self, agent: str, system: str, prompt: str) -> str | dict:
+        if self.delay:
+            time.sleep(self.delay)
         with self._lock:
             self.calls.append({"agent": agent, "system": system, "prompt": prompt})
             queue = self._queues.get(agent)

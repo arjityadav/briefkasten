@@ -122,3 +122,58 @@ def test_serve_refuses_public_full_app(monkeypatch):
     assert r.exit_code == 0 and calls and "Impressum" in r.output
 
     assert CliRunner().invoke(main, ["serve"]).exit_code == 0  # localhost is always fine
+
+
+# --------------------------------------------------------------------------- live jobs (SSE)
+
+
+def _events(client, job_id):
+    import json
+
+    with client.stream("GET", f"/api/jobs/{job_id}/events") as r:
+        assert r.headers["content-type"].startswith("text/event-stream")
+        return [json.loads(line[6:]) for line in r.iter_lines() if line.startswith("data: ")]
+
+
+def test_demo_job_streams_every_agent_step_then_the_run(client):
+    job = client.post("/api/demo/vermieter_nebenkosten/job?pace=0").json()
+    events = _events(client, job["job_id"])
+    types = [e["type"] for e in events]
+    assert types[0] == "info" and "Redactor masked" in events[0]["text"]
+    assert types[-1] == "done" and events[-1]["run"]["status"] == "done"
+    decided = [e for e in events if e["type"] == "decided"]
+    assert decided[0]["agent"] == "supervisor" and decided[0]["tools"] == ["triage_letter"]
+    assert any(e["type"] == "problem" and e["agent"] == "extractor" for e in events)  # the verifier's rejection
+    assert len(decided) == len(events[-1]["run"]["trace"])
+    assert all(b["t"] >= a["t"] for a, b in zip(events, events[1:]))
+
+
+def test_job_events_can_resume_and_unknown_jobs_404(client):
+    job = client.post("/api/demo/finanzamt_bescheid/job?pace=0").json()
+    all_events = _events(client, job["job_id"])
+    with client.stream("GET", f"/api/jobs/{job['job_id']}/events", headers={"last-event-id": "2"}) as r:
+        resumed = [line for line in r.iter_lines() if line.startswith("data: ")]
+    assert len(resumed) == len(all_events) - 3
+    assert client.get("/api/jobs/nope/events").status_code == 404
+
+
+def test_job_errors_are_reported_in_the_stream(client, monkeypatch):
+    from briefkasten import api
+
+    monkeypatch.setattr(api, "pipeline", lambda: _Broken())
+    job = client.post("/api/jobs", data={"text": "Sehr geehrte Damen und Herren"}).json()
+    events = _events(client, job["job_id"])
+    assert events[-1]["type"] == "error" and "boom" in events[-1]["detail"]
+
+
+class _Broken:
+    settings = None
+
+    def process(self, *a, **k):
+        raise RuntimeError("boom")
+
+
+def test_demo_only_refuses_job_uploads(demo_client):
+    client, _ = demo_client
+    assert client.post("/api/jobs", data={"text": "Hallo"}).status_code == 403
+    assert client.post("/api/demo/handyvertrag/job?pace=0").status_code == 200

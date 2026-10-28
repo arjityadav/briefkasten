@@ -107,11 +107,23 @@ The `vermieter_nebenkosten` demo shows a transposed amount being caught and fixe
 is refused while work is missing, such as an unreviewed explanation, stale deadlines, or a reply the user asked
 for. The user's requested intent always overrides the Supervisor's choice.
 
-**Privacy by construction.** IBANs, tax IDs, insurance numbers, phone numbers, e-mail addresses and names you list
-are replaced with stable placeholders before any model call. The test suite asserts that no prompt contains the raw
-values. The mapping stays on local disk; real values return only when an approved reply is exported. With
+**Privacy by construction.** Before any model call, three layers replace personal data with stable placeholders:
+the names and addresses you list (matched exactly and fuzzily, so OCR misreadings are caught too); names, street
+addresses and birthdates found from how German letters are written (`Herrn …`, `Ehefrau: …`, `geb. …`, the name line
+of an address block), including every later mention of a detected name, so an unlisted family member is masked
+throughout; and patterns for IBANs, tax IDs, insurance numbers, phone numbers and e-mail addresses. Organisations
+and their public addresses stay readable, since the agents need to know who wrote and where an objection goes.
+The test suite asserts that no prompt contains the raw values. The mapping stays on local disk; real values return
+only when an approved reply is exported. With
 `BRIEFKASTEN_PROVIDER=openai` pointed at Ollama, nothing leaves your machine at all. With Groq or Anthropic, only the redacted text
-(and, for scans, the image) is sent.
+is sent.
+
+**Scans and photos are read on your machine.** Redaction needs text, so whatever reads an image sees the unredacted
+page. By default that is local Tesseract OCR (`BRIEFKASTEN_IMAGE_READER=ocr`), so the image never leaves your machine;
+`local_vision` uses a vision model on a local server such as Ollama (refused if the address isn't local), and `cloud`
+sends the image to the provider's vision model, an explicit opt-in that the run report flags. Because OCR misreads
+letters (ß becomes "k" or "B"), the names and addresses you list are also matched fuzzily: "Musterstrake 12" and
+"Musterstr. 12" are masked as "Musterstraße 12", and restored with your spelling on export.
 
 **Human in the loop, enforced in code.** Drafts can't be exported until approved, and can't be approved while
 editorial blanks like `[Nachweis beifügen]` remain. The model is told to leave blanks rather than invent facts about you,
@@ -189,13 +201,34 @@ The OpenAI-compatible provider also works with OpenAI, vLLM, LM Studio and Gemin
 
 ### Web app and API
 
-`briefkasten serve` starts a FastAPI app with a single-page UI (upload or paste, deadlines with "how this was
-worked out", editable draft with approve/reject, download). Endpoints:
+`briefkasten serve` serves an interactive TypeScript UI (React + Vite, in `frontend/`). Build it once:
+
+```bash
+cd frontend && npm install && npm run build      # outputs to src/briefkasten/web/dist
+briefkasten serve                                 # http://127.0.0.1:8000
+npm run dev                                       # or: hot-reloading dev server on :5173, proxying /api to :8000
+```
+
+What it does:
+
+- **Live agent graph**: the Supervisor in the middle, specialists around it. Edges light up while a specialist works on a
+  delegated job, nodes pulse while thinking and flash amber when a check rejects their work. Click a node to filter the log.
+- **Live log** streamed over Server-Sent Events: each agent's reasoning, the tools it called, rejections and how it
+  fixed them, rate-limit waits. Samples replay at a watchable pace; every tool runs for real.
+- **Document view**: exactly the redacted text the agents saw, masked values as chips. Hover any extracted fact
+  (deadline, amount, clause, payslip line) and its quote lights up in the document.
+- **Deadlines**: countdowns, a month calendar, "how this date was worked out" step by step, `.ics` export with a reminder.
+- **Payslip** waterfall from gross to paid out; **contract** timeline with today, cancel-by date and term end;
+  **form** checklist remembered in the browser.
+- **Reply draft**: fill each `[blank]` inline, live letter preview, approve unlocks only when nothing is left, then download.
+- Dark mode, keyboard navigation, works down to phone width. Without a build, `serve` falls back to a simple HTML page.
 
 | Method | Path | |
 |---|---|---|
 | `POST` | `/api/runs` | multipart: `file` or `text`, optional `received_on`, `intent`, `bundesland` |
 | `POST` | `/api/demo/{name}` | replay a sample without an API key |
+| `POST` | `/api/jobs`, `/api/demo/{name}/job?pace=0.7` | start a run in the background (same form fields as `/api/runs`) |
+| `GET` | `/api/jobs/{id}/events` | Server-Sent Events: every agent step, then `done` with the run; resumable via `Last-Event-ID` |
 | `GET` | `/api/runs`, `/api/runs/{id}` | list / fetch (never includes the redaction map) |
 | `POST` | `/api/runs/{id}/approve` | `{ "body_de": "...", "subject_de": "..." }`, 409 while blanks remain |
 | `POST` | `/api/runs/{id}/reject` | `{ "reason": "..." }` |
@@ -229,7 +262,7 @@ encrypted, expiring storage first.
 ## Testing and evaluation
 
 ```bash
-pytest                       # 88 tests: deadline law, holidays, redaction, grounding, agents, file formats, providers, API
+pytest                       # 103 tests: deadline law, holidays, redaction, grounding, agents, file formats, providers, API
 python evals/run_eval.py     # real model against hand-labelled letters
 ```
 
@@ -264,8 +297,11 @@ tests/
   use the letter date as the earliest possible start and are marked *estimated*. Special regimes (e.g. procedural
   deadlines inside an ongoing court case, Wiedereinsetzung) are not modelled.
 - Holidays cover statutory state-wide days; local ones (e.g. Augsburger Friedensfest) are not included.
-- Names and addresses are only masked if you list them; images are sent to the vision model before redaction
-  (use a local model for scans if that matters).
+- Unlisted names are found from letter conventions, not by understanding the text: a name in running prose without a
+  form of address or label ("…wie mit Jonas besprochen…") is only caught if it also appears somewhere the rules
+  recognise. Organisations missing from the built-in list may have their address masked too (safe, but less helpful). With `BRIEFKASTEN_IMAGE_READER=cloud`, images reach the provider before
+  redaction. Local OCR is weaker than a vision model on crumpled or angled photos; install the German language data
+  (`brew install tesseract-lang`) or use `local_vision`.
 - Agents need a model with native tool calling. Most current local models (Qwen 2.5, Llama 3.1+) support it
   through Ollama; very small models may wander, which the step limits and budgets contain but cannot fix.
 - Real-model runs make more calls than a fixed pipeline (roughly 15-20 steps and ~55k tokens per letter instead of 6 calls).

@@ -16,9 +16,12 @@ from email import policy
 from pathlib import Path
 from xml.etree import ElementTree
 
-from .agents import TranscriberAgent
-from .llm import Image, LLMRouter
+from typing import Callable
+
+from .llm import Image
 from .models import TraceEvent
+
+ImageReader = Callable[[list[Image], list[TraceEvent]], str]
 
 IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 HEIC_TYPES = {".heic", ".heif"}  # iPhone photos; converted to JPEG (needs the 'photos' extra)
@@ -26,7 +29,7 @@ TEXT_TYPES = {".txt", ".md"}
 SUPPORTED = TEXT_TYPES | {".pdf", ".docx", ".eml"} | set(IMAGE_TYPES) | HEIC_TYPES
 MIN_PDF_TEXT = 80  # fewer characters than this means "probably a scan"
 MAX_PDF_PAGES = 4  # scanned pages sent to the vision model per PDF
-IMAGES_PER_CALL = 4  # pages per transcription call
+IMAGES_PER_CALL = 4  # pages per reader call (vision models take a few images at once)
 MAX_IMAGE_SIDE = 2048  # photos are downscaled to this before upload (when Pillow is installed)
 MAX_RAW_IMAGE = 4 * 1024 * 1024  # without Pillow, larger images are refused rather than rejected by the API
 PAGE_BREAK = "\n\n"
@@ -185,8 +188,11 @@ def _email_parts(data: bytes, depth: int) -> list[str | list[Image]]:
 # --------------------------------------------------------------------------- public API
 
 
-def load_documents(files: list[tuple[bytes, str]], router: LLMRouter | None, trace: list[TraceEvent]) -> str:
-    """Several files that together form one document (e.g. one photo per page), in order."""
+def load_documents(files: list[tuple[bytes, str]], reader: ImageReader | None, trace: list[TraceEvent]) -> str:
+    """Several files that together form one document (e.g. one photo per page), in order.
+
+    `reader` turns page images into text (see readers.py); it is only called if there are images.
+    """
     if not files:
         raise UnsupportedDocument("No file given")
     parts: list[str | list[Image]] = []
@@ -202,12 +208,11 @@ def load_documents(files: list[tuple[bytes, str]], router: LLMRouter | None, tra
         if isinstance(p, str):
             texts.append(p)
             continue
-        if router is None:
-            raise UnsupportedDocument("Reading images needs a vision-capable model provider.")
-        agent = TranscriberAgent(router)
-        texts += [agent.run(p[i : i + IMAGES_PER_CALL], trace) for i in range(0, len(p), IMAGES_PER_CALL)]
+        if reader is None:
+            raise UnsupportedDocument("Reading scans and photos needs an image reader (local OCR or a vision model).")
+        texts += [reader(p[i : i + IMAGES_PER_CALL], trace) for i in range(0, len(p), IMAGES_PER_CALL)]
     return PAGE_BREAK.join(t.strip() for t in texts if t.strip())
 
 
-def load_document(data: bytes, filename: str, router: LLMRouter | None, trace: list[TraceEvent]) -> str:
-    return load_documents([(data, filename)], router, trace)
+def load_document(data: bytes, filename: str, reader: ImageReader | None, trace: list[TraceEvent]) -> str:
+    return load_documents([(data, filename)], reader, trace)

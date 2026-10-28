@@ -30,7 +30,7 @@ briefkasten = "briefkasten.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-briefkasten = ["web/*.html", "samples/letters/*.txt", "samples/gold/*.json", "samples/replays/*.json"]
+briefkasten = ["web/*.html", "web/dist/*.html", "web/dist/assets/*", "samples/letters/*.txt", "samples/gold/*.json", "samples/replays/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

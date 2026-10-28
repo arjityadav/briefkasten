@@ -34,6 +34,11 @@ def render(state: RunState, verbose: bool = False) -> str:
     out.append(click.style(f"run {state.run_id} · {state.source_name} · Bundesland {state.bundesland} · status {state.status}", dim=True))
     if state.error:
         out.append(click.style(f"Error: {state.error}", fg="red"))
+    if state.image_reader:
+        from .readers import READERS
+
+        note = f"Scan read by {READERS.get(state.image_reader, state.image_reader)}."
+        out.append(click.style(note, fg="yellow") if state.image_reader == "cloud" else click.style(note, dim=True))
 
     if state.explanation:
         e = state.explanation

@@ -78,6 +78,8 @@ def process(files: tuple[Path, ...], received, intent, bundesland, as_json, verb
     """
     app = _app(state=bundesland.upper() if bundesland else None)
     progress = None if quiet else _live(app)
+    if app.settings.image_reader == "cloud" and progress:
+        progress.info("⚠ BRIEFKASTEN_IMAGE_READER=cloud: scans and photos are sent to the provider before redaction")
     from .documents import UnsupportedDocument
 
     try:
