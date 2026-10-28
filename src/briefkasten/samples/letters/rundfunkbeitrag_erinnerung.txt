@@ -1,0 +1,25 @@
+Beitragsservice (Beispiel)
+Postfach 99 99, 50000 Musterstadt
+
+Herrn
+Max Mustermann
+Musterstraße 12
+70173 Stuttgart
+
+Beitragsnummer: 123 456 789
+Datum: 05.10.2026
+
+Zahlungserinnerung
+
+Sehr geehrter Herr Mustermann,
+
+für Ihr Beitragskonto ist folgender Betrag noch offen:
+
+Zeitraum 01.07.2026 – 30.09.2026          55,08 €
+
+Bitte überweisen Sie den offenen Betrag von 55,08 € bis zum 31.10.2026. Sollte der Betrag bereits bezahlt sein, betrachten Sie dieses Schreiben bitte als gegenstandslos.
+
+Wenn der Betrag nicht fristgerecht eingeht, setzen wir die rückständigen Beiträge per Bescheid fest. Dabei wird ein Säumniszuschlag erhoben.
+
+Mit freundlichen Grüßen
+Beitragsservice (Beispiel)

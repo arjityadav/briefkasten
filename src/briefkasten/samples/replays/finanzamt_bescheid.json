@@ -1,0 +1,87 @@
+{
+  "_comment": "Recorded agent replies for `briefkasten demo finanzamt_bescheid`. Redaction, deadline maths, verification and approval all run live.",
+  "letter": "finanzamt_bescheid.txt",
+  "intent": "file_objection",
+  "responses": {
+    "triage": [
+      {
+        "sender_type": "tax_office",
+        "sender_name": "Finanzamt Musterstadt",
+        "doc_type": "decision",
+        "language": "de",
+        "is_official_decision": true,
+        "needs_response": false,
+        "confidence": 0.97,
+        "reasoning": "Income tax assessment (Einkommensteuerbescheid) with a Rechtsbehelfsbelehrung; it demands a payment but no reply."
+      }
+    ],
+    "explainer": [
+      {
+        "summary_en": "This is your income tax assessment for 2025 from the tax office. They set your income tax at 8,412.00 €. Your employer already withheld 8,000.00 € from your salary, so you owe another 412.00 €. They only accepted part of your home-office costs, because you did not show that the home office is the centre of all your work.",
+        "key_points": [
+          "You must pay 412.00 € by 16.11.2026 and quote your tax number (Steuernummer) with the payment.",
+          "Home-office costs were only allowed at the daily flat rate of 6 € per day, up to 1,260 €.",
+          "You can object (Einspruch) within one month of the date the decision counts as delivered.",
+          "An objection on its own does not postpone the payment; you can ask for a suspension (Aussetzung der Vollziehung) of the disputed amount."
+        ],
+        "if_ignored": "The assessment becomes final after the objection period, and the 412.00 € remains due.",
+        "glossary": [
+          {"german": "Bescheid", "english": "official decision / assessment"},
+          {"german": "Einspruch", "english": "formal objection", "note": "the free way to challenge a tax decision"},
+          {"german": "Rechtsbehelfsbelehrung", "english": "instructions on how to appeal"},
+          {"german": "Tagespauschale", "english": "daily flat-rate allowance"},
+          {"german": "häusliches Arbeitszimmer", "english": "home office room"},
+          {"german": "Steuernummer", "english": "tax number for your file at this office"}
+        ]
+      }
+    ],
+    "extractor": [
+      {
+        "letter_date": "2026-10-13",
+        "letter_date_quote": "Datum: 13.10.2026",
+        "deadlines": [
+          {
+            "id": "payment",
+            "purpose": "Pay the remaining income tax of 412.00 €",
+            "kind": "payment",
+            "rule": {"kind": "fixed_date", "fixed_date": "2026-11-16"},
+            "quote": "Bitte zahlen Sie den Betrag von 412,00 € spätestens bis zum 16.11.2026"
+          },
+          {
+            "id": "objection",
+            "purpose": "File an objection (Einspruch) against the assessment",
+            "kind": "right_to_object",
+            "rule": {"kind": "after_notification", "months": 1, "delivery": "post"},
+            "quote": "Die Frist für die Einlegung des Einspruchs beträgt einen Monat."
+          }
+        ],
+        "amounts": [
+          {"value": 412.0, "purpose": "Remaining income tax to pay", "direction": "you_pay", "quote": "verbleibende Beträge 412,00 €"},
+          {"value": 8412.0, "purpose": "Income tax assessed for 2025", "direction": "info", "quote": "festgesetzt werden 8.412,00 €"},
+          {"value": 8000.0, "purpose": "Tax already withheld from salary", "direction": "info", "quote": "abzüglich Steuerabzug vom Lohn 8.000,00 €"}
+        ],
+        "references": [
+          {"label": "Steuernummer", "value": "[STEUERNUMMER_1]", "quote": "Steuernummer: [STEUERNUMMER_1]"}
+        ],
+        "actions": [
+          {"description": "Transfer 412.00 € to the tax office and quote your Steuernummer", "priority": "high", "quote": "Geben Sie dabei bitte Ihre Steuernummer an."},
+          {"description": "Decide whether to object to the reduced home-office deduction", "priority": "medium", "quote": "konnten nur in Höhe der Tagespauschale ... berücksichtigt werden"}
+        ],
+        "has_legal_remedy_notice": true
+      }
+    ],
+    "critic": [
+      {"unsupported_claims": [], "missing_important_points": []}
+    ],
+    "drafter": [
+      {
+        "intent": "file_objection",
+        "subject_de": "Einspruch gegen den Bescheid für 2025 über Einkommensteuer und Solidaritätszuschlag vom 13.10.2026, Steuernummer [STEUERNUMMER_1]",
+        "body_de": "Sehr geehrte Damen und Herren,\n\nhiermit lege ich Einspruch gegen den oben genannten Bescheid vom 13.10.2026 ein.\n\nBegründung:\nDie Aufwendungen für mein häusliches Arbeitszimmer wurden nur in Höhe der Tagespauschale berücksichtigt. Das Arbeitszimmer bildet jedoch den Mittelpunkt meiner gesamten beruflichen Tätigkeit. [Nachweis beifügen, z. B. Bestätigung des Arbeitgebers]\n\nIch beantrage, die Aufwendungen für das Arbeitszimmer in voller Höhe zu berücksichtigen und die Steuer entsprechend herabzusetzen. Zugleich beantrage ich die Aussetzung der Vollziehung in Höhe des streitigen Betrags.",
+        "body_en": "Dear Sir or Madam,\n\nI hereby object to the above decision dated 13.10.2026.\n\nReasons:\nThe costs of my home office were only accepted at the daily flat rate. However, the home office is the centre of all my professional activity. [Attach evidence, e.g. a confirmation from my employer]\n\nI request that the home-office costs be accepted in full and the tax reduced accordingly. I also request suspension of enforcement for the disputed amount.",
+        "notes_en": "Attach proof that the home office is the centre of your work, and remember that the objection alone does not stop the 412.00 € payment from being due.",
+        "alternatives": ["request_installments", "ask_for_clarification"]
+      }
+    ]
+  }
+}

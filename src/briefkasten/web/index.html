@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Briefkasten</title>
+<style>
+  :root {
+    --bg: #f5f2ea; --paper: #fffdf8; --ink: #1f1d1a; --muted: #6b665d; --line: #e3ddd0;
+    --accent: #e8b500; --accent-ink: #3a2e00; --red: #b42318; --red-bg: #fde8e6;
+    --amber: #8a5a00; --amber-bg: #fdf1d6; --green: #1d6b3a; --green-bg: #e3f3e8; --blue-bg: #e8eef8;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #171614; --paper: #201f1c; --ink: #ece8df; --muted: #a39d91; --line: #34322d;
+      --red-bg: #3a1714; --amber-bg: #34280f; --green-bg: #13291b; --blue-bg: #1b2433; --red: #f08a7e; --amber: #f0c060; --green: #7fd19b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+  .slot { width: 34px; height: 22px; border-radius: 4px; background: var(--accent); position: relative; }
+  .slot::after { content: ""; position: absolute; left: 6px; right: 6px; top: 9px; height: 4px; border-radius: 2px; background: var(--accent-ink); }
+  header h1 { font-size: 19px; margin: 0; letter-spacing: .2px; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 24px; padding: 24px; max-width: 1240px; margin: 0 auto; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; padding: 16px; } }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .card + .card { margin-top: 16px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input, select, textarea { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  textarea { min-height: 140px; resize: vertical; font-family: var(--mono); font-size: 13px; }
+  .drop { border: 1.5px dashed var(--line); border-radius: 8px; padding: 18px; text-align: center; color: var(--muted); cursor: pointer; }
+  .drop.over { border-color: var(--accent); background: var(--amber-bg); }
+  button { font: inherit; border: 0; border-radius: 6px; padding: 9px 14px; cursor: pointer; background: var(--ink); color: var(--paper); }
+  button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  button.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: progress; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .banner { display: flex; gap: 14px; align-items: center; padding: 14px 18px; border-radius: 10px; margin-bottom: 16px; }
+  .badge { font-size: 12px; font-weight: 700; letter-spacing: .06em; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
+  .u-overdue, .u-urgent { background: var(--red-bg); } .u-overdue .badge, .u-urgent .badge { background: var(--red); color: #fff; }
+  .u-soon { background: var(--amber-bg); } .u-soon .badge { background: var(--amber); color: #fff; }
+  .u-relaxed { background: var(--green-bg); } .u-relaxed .badge { background: var(--green); color: #fff; }
+  .u-none { background: var(--blue-bg); } .u-none .badge { background: var(--muted); color: #fff; }
+  .banner strong { font-size: 17px; }
+  ul.points { margin: 0; padding-left: 18px; } ul.points li { margin: 4px 0; }
+  .deadline { display: grid; grid-template-columns: 120px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .deadline:first-of-type { border-top: 0; }
+  .date { font-weight: 700; font-variant-numeric: tabular-nums; } .left { font-size: 12px; color: var(--muted); }
+  .left.hot { color: var(--red); font-weight: 600; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  details ol { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+  .tag { font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; color: var(--muted); margin-left: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { text-align: left; padding: 6px 4px; border-top: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; } td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .issue { font-size: 13px; padding: 6px 10px; border-radius: 6px; margin: 6px 0; }
+  .issue.error { background: var(--red-bg); } .issue.warning { background: var(--amber-bg); }
+  .draft textarea { min-height: 260px; background: var(--paper); }
+  .ph { background: var(--amber-bg); border-radius: 3px; padding: 0 2px; }
+  .en { white-space: pre-wrap; font-size: 13px; color: var(--muted); border-left: 3px solid var(--line); padding-left: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } @media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } }
+  .runs a { display: block; padding: 6px 0; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 13px; }
+  .runs a:hover { color: var(--amber); }
+  .error-box { background: var(--red-bg); padding: 10px 12px; border-radius: 8px; margin-top: 12px; font-size: 14px; }
+  .empty { text-align: center; color: var(--muted); padding: 60px 20px; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 8px 0 28px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="slot" aria-hidden="true"></div>
+  <div><h1>Briefkasten</h1><p>Understand official German mail. Never miss a deadline.</p></div>
+</header>
+<main>
+  <aside>
+    <form class="card" id="form">
+      <h2>New letter</h2>
+      <div class="drop" id="drop" tabindex="0">Drop a PDF, photo or .txt here<br><span class="muted">or click to choose</span></div>
+      <input type="file" id="file" accept=".pdf,.txt,.md,.png,.jpg,.jpeg,.webp" hidden>
+      <div class="muted" id="fname" style="margin-top:6px"></div>
+      <label for="text">…or paste the text</label>
+      <textarea id="text" placeholder="Sehr geehrte …"></textarea>
+      <label for="received">Date you received it (optional)</label>
+      <input type="date" id="received">
+      <label for="state">Bundesland (for public holidays)</label>
+      <select id="state"></select>
+      <label for="intent">Draft a reply (optional)</label>
+      <select id="intent"><option value="">Only if the letter needs one</option></select>
+      <div class="row" style="margin-top:16px"><button class="primary" id="go" type="submit">Analyse letter</button></div>
+      <div id="formError"></div>
+    </form>
+    <div class="card">
+      <h2>Try a sample</h2>
+      <p class="muted" style="margin-top:0">Replays recorded agent outputs; redaction, deadline maths, checks and approval run live.</p>
+      <div class="row" id="demos"></div>
+    </div>
+    <div class="card runs"><h2>Recent</h2><div id="runs"><span class="muted">None yet</span></div></div>
+  </aside>
+  <section id="result"><div class="card empty">Upload a letter to see what it means, what you must do, and by when.</div></section>
+</main>
+<footer>Briefkasten explains letters; it is not legal or tax advice. Personal identifiers are masked before any model sees the text.</footer>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtDate = (iso) => iso ? new Date(iso + "T12:00:00").toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" }) : "unknown";
+const eur = (n) => n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+const URG = { overdue: "OVERDUE", urgent: "URGENT", soon: "DUE SOON", relaxed: "NO RUSH", none: "NO DEADLINE" };
+let current = null;
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  const body = r.headers.get("content-type")?.includes("json") ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(body?.detail || body || r.statusText);
+  return body;
+}
+
+async function init() {
+  const meta = await api("/api/meta");
+  $("#state").innerHTML = Object.entries(meta.states).map(([k, v]) => `<option value="${k}" ${k === meta.default_state ? "selected" : ""}>${esc(v)}</option>`).join("");
+  $("#intent").innerHTML += Object.entries(meta.intents).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+  $("#demos").innerHTML = meta.demos.map((d) => `<button class="secondary" type="button" data-demo="${d}">${esc(d.replace(/_/g, " "))}</button>`).join("");
+  $("#demos").onclick = async (e) => { const d = e.target.dataset.demo; if (d) await run(() => api(`/api/demo/${d}`, { method: "POST" })); };
+  loadRuns();
+}
+
+async function loadRuns() {
+  const runs = await api("/api/runs");
+  if (!runs.length) return;
+  $("#runs").innerHTML = runs.map((r) => `<a href="#" data-id="${r.run_id}">${esc(r.sender || r.run_id)}<br><span class="muted">${esc(r.status.replace("_", " "))} · next ${fmtDate(r.next_deadline)}</span></a>`).join("");
+}
+$("#runs").onclick = async (e) => { const a = e.target.closest("a"); if (!a) return; e.preventDefault(); show(await api(`/api/runs/${a.dataset.id}`)); };
+
+const drop = $("#drop"), fileIn = $("#file");
+drop.onclick = () => fileIn.click();
+drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") fileIn.click(); };
+fileIn.onchange = () => { $("#fname").textContent = fileIn.files[0]?.name || ""; };
+["dragover", "dragenter"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => { fileIn.files = e.dataTransfer.files; fileIn.onchange(); });
+
+$("#form").onsubmit = async (e) => {
+  e.preventDefault();
+  const fd = new FormData();
+  if (fileIn.files[0]) fd.append("file", fileIn.files[0]); else fd.append("text", $("#text").value);
+  if ($("#received").value) fd.append("received_on", $("#received").value);
+  if ($("#intent").value) fd.append("intent", $("#intent").value);
+  fd.append("bundesland", $("#state").value);
+  await run(() => api("/api/runs", { method: "POST", body: fd }));
+};
+
+async function run(fn) {
+  const btns = document.querySelectorAll("button"); btns.forEach((b) => (b.disabled = true));
+  $("#formError").innerHTML = "";
+  $("#result").innerHTML = `<div class="card empty">Agents at work: triage, explanation, extraction, verification…</div>`;
+  try { show(await fn()); loadRuns(); }
+  catch (err) { $("#result").innerHTML = ""; $("#formError").innerHTML = `<div class="error-box">${esc(err.message)}</div>`; }
+  finally { btns.forEach((b) => (b.disabled = false)); }
+}
+
+function show(s) {
+  current = s;
+  const t = s.triage, e = s.explanation, x = s.extraction, v = s.verification, d = s.draft;
+  let h = `<div class="banner u-${s.urgency}"><span class="badge">${URG[s.urgency]}</span><div><strong>${esc(t?.sender_name || s.source_name)}</strong><div class="muted">${esc(t?.doc_type?.replace(/_/g, " ") || "")} · ${s.redaction_count} identifiers masked · run ${esc(s.run_id)}</div></div></div>`;
+  if (s.error) h += `<div class="card error-box">${esc(s.error)}</div>`;
+  if (e) {
+    h += `<div class="card"><h2>What this is</h2><p style="margin-top:0">${esc(e.summary_en)}</p><ul class="points">${e.key_points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>`;
+    if (e.if_ignored) h += `<p><strong>If you do nothing:</strong> ${esc(e.if_ignored)}</p>`;
+    h += `</div>`;
+  }
+  if (s.deadlines.length) {
+    h += `<div class="card"><h2>Deadlines</h2>` + s.deadlines.map((dl) => {
+      const hot = dl.days_left !== null && dl.days_left <= 7;
+      const left = dl.days_left === null ? "" : dl.days_left < 0 ? `${-dl.days_left} days ago` : dl.days_left === 0 ? "today" : `in ${dl.days_left} days`;
+      return `<div class="deadline"><div><div class="date">${fmtDate(dl.due_date)}</div><div class="left ${hot ? "hot" : ""}">${left}</div></div>
+        <div>${esc(dl.purpose)}${dl.basis !== "stated" ? `<span class="tag">${dl.basis}</span>` : ""}
+        <details><summary>How this was worked out</summary><ol>${dl.steps.map((st) => `<li>${esc(st)}</li>`).join("")}</ol><p class="muted">Letter says: „${esc(dl.quote)}“</p></details></div></div>`;
+    }).join("") + `</div>`;
+  }
+  const side = [];
+  if (x?.amounts?.length) side.push(`<div class="card"><h2>Amounts</h2><table>${x.amounts.map((a) => `<tr><td>${esc(a.purpose)}</td><td class="muted">${a.direction.replace("_", " ")}</td><td class="num">${eur(a.value)}</td></tr>`).join("")}</table></div>`);
+  if (x?.actions?.length) side.push(`<div class="card"><h2>To do</h2><ul class="points">${x.actions.map((a) => `<li>${a.priority === "high" ? "<strong>" : ""}${esc(a.description)}${a.priority === "high" ? "</strong>" : ""}</li>`).join("")}</ul></div>`);
+  if (e?.glossary?.length) side.push(`<div class="card"><h2>German words to know</h2><table>${e.glossary.map((g) => `<tr><td><strong>${esc(g.german)}</strong></td><td>${esc(g.english)}</td></tr>`).join("")}</table></div>`);
+  if (v) side.push(`<div class="card"><h2>Checks</h2><p style="margin-top:0">${v.passed ? "✓ Passed" : "✗ Failed"} · ${v.quotes_checked} quotes verified against the letter · ${v.extraction_rounds} extraction round(s)</p>${v.repaired.map((r) => `<div class="issue warning">Repaired: ${esc(r)}</div>`).join("")}${v.issues.map((i) => `<div class="issue ${i.severity}">${esc(i.message)}</div>`).join("")}</div>`);
+  if (side.length) h += `<div class="grid2">${side.map((c) => `<div>${c}</div>`).join("")}</div>`;
+  if (d) {
+    const open = d.status === "pending_approval";
+    h += `<div class="card draft"><h2>Draft reply · ${esc(d.intent.replace(/_/g, " "))} · ${esc(d.status.replace("_", " "))}</h2>
+      <label for="subj">Betreff</label><input id="subj" value="${esc(d.subject_de)}" ${open ? "" : "disabled"}>
+      <label for="body">Brief (German) — fill in every [bracketed] gap before approving</label><textarea id="body" ${open ? "" : "disabled"}>${esc(d.body_de)}</textarea>
+      <p class="muted">${esc(d.notes_en)}</p>
+      <details><summary>English translation</summary><div class="en">${esc(d.body_en)}</div></details>
+      <div class="row" style="margin-top:14px">${open ? `<button class="primary" id="approve">Approve</button><button class="secondary" id="reject">Reject</button>` : ""}
+      ${d.status === "approved" ? `<a href="/api/runs/${s.run_id}/letter"><button class="primary" type="button">Download letter</button></a>` : ""}</div>
+      <div id="draftError"></div></div>`;
+  }
+  if (s.trace.length) {
+    const tok = s.trace.reduce((a, ev) => a + ev.input_tokens + ev.output_tokens, 0);
+    h += `<div class="card"><details><summary>Agent trace · ${s.trace.length} calls · ${tok.toLocaleString()} tokens</summary><table><tr><th>Agent</th><th>Model</th><th>ms</th><th>Tokens in → out</th><th></th></tr>${s.trace.map((ev) => `<tr><td>${esc(ev.agent)}</td><td class="muted">${esc(ev.model)}</td><td class="num">${ev.duration_ms}</td><td class="num">${ev.input_tokens} → ${ev.output_tokens}</td><td class="muted">${esc(ev.note || "")}</td></tr>`).join("")}</table></details></div>`;
+  }
+  $("#result").innerHTML = h;
+  if (d && d.status === "pending_approval") {
+    $("#approve").onclick = () => decide("approve", { body_de: $("#body").value, subject_de: $("#subj").value });
+    $("#reject").onclick = () => decide("reject", { reason: prompt("Why? (optional)") || null });
+  }
+}
+
+async function decide(action, payload) {
+  try {
+    show(await api(`/api/runs/${current.run_id}/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }));
+    loadRuns();
+  } catch (err) { $("#draftError").innerHTML = `<div class="error-box">${esc(err.message)}</div>`; }
+}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "letter": "rundfunkbeitrag_erinnerung.txt",
+  "bundesland": "BW",
+  "received_on": null,
+  "sender_type": "broadcast_fee",
+  "doc_type": "reminder",
+  "is_official_decision": false,
+  "letter_date": "2026-10-05",
+  "due_dates": {
+    "payment": "2026-10-31"
+  },
+  "amounts_you_pay": [
+    55.08
+  ],
+  "_note": "due_dates are keyed by deadline kind; dates computed by hand from the rules in tools/deadlines.py"
+}

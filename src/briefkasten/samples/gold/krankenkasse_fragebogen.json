@@ -1,0 +1,14 @@
+{
+  "letter": "krankenkasse_fragebogen.txt",
+  "bundesland": "BW",
+  "received_on": null,
+  "sender_type": "health_insurance",
+  "doc_type": "request_for_information",
+  "is_official_decision": false,
+  "letter_date": "2026-10-21",
+  "due_dates": {
+    "action_required": "2026-11-20"
+  },
+  "amounts_you_pay": [],
+  "_note": "due_dates are keyed by deadline kind; dates computed by hand from the rules in tools/deadlines.py"
+}

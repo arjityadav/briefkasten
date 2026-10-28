@@ -1,0 +1,17 @@
+{
+  "letter": "finanzamt_bescheid.txt",
+  "bundesland": "BW",
+  "received_on": null,
+  "sender_type": "tax_office",
+  "doc_type": "decision",
+  "is_official_decision": true,
+  "letter_date": "2026-10-13",
+  "due_dates": {
+    "payment": "2026-11-16",
+    "right_to_object": "2026-11-19"
+  },
+  "amounts_you_pay": [
+    412.0
+  ],
+  "_note": "due_dates are keyed by deadline kind; dates computed by hand from the rules in tools/deadlines.py"
+}
