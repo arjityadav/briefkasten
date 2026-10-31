@@ -89,6 +89,11 @@ export function ResultView({ run, live, onRunChange }: Props) {
         {tab === "document" && <DocumentView run={run} focus={focus} onFocus={setFocus} />}
         {tab === "draft" && run.draft && <DraftView run={run} draft={run.draft} onRunChange={onRunChange} />}
         {tab === "checks" && <Checks run={run} />}
+        {tab === "agents" && run.trace_url && (
+          <a className="trace-link" href={run.trace_url} target="_blank" rel="noreferrer">
+            Open the full trace in Langfuse ↗ <span className="muted small">every prompt, tool result and score</span>
+          </a>
+        )}
         {tab === "agents" && (
           <div className="live-grid">
             <AgentGraph live={live} selected={filter} onSelect={setFilter} />

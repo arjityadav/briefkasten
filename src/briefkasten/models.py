@@ -321,6 +321,8 @@ class RunState(BaseModel):
     draft: ReplyDraft | None = None
     analysis: DocumentAnalysis | None = Field(None, discriminator="family")
     supervisor_notes: str | None = None
+    trace_id: str | None = Field(None, description="Langfuse trace of this run, when tracing is on")
+    trace_url: str | None = None
     trace: list[TraceEvent] = Field(default_factory=list)
 
     def public_view(self) -> dict:

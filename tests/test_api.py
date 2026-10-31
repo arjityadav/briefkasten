@@ -177,3 +177,30 @@ def test_demo_only_refuses_job_uploads(demo_client):
     client, _ = demo_client
     assert client.post("/api/jobs", data={"text": "Hallo"}).status_code == 403
     assert client.post("/api/demo/handyvertrag/job?pace=0").status_code == 200
+
+
+def test_job_status_for_polling_includes_calendar_and_summary(client):
+    job = client.post("/api/demo/finanzamt_bescheid/job?pace=0").json()
+    _events(client, job["job_id"])  # wait until finished
+    s = client.get(f"/api/jobs/{job['job_id']}").json()
+    assert s["done"] and s["status"] == "done" and s["steps"] == len(s["run"]["trace"])
+    assert [(e["date"], e["basis"]) for e in s["calendar_events"]] == [("2026-11-16", "stated"), ("2026-11-19", "computed")]
+    assert "Finanzamt Musterstadt" in s["calendar_events"][0]["title"]
+    assert "Deadlines:" in s["summary_text"] and "waiting for your approval" in s["summary_text"]
+    assert "99/815/08154" not in str(s)  # same redacted view as everything else
+    assert client.get("/api/jobs/nope").status_code == 404
+
+
+def test_failed_run_summary_keeps_partial_results():
+    from briefkasten.notify import calendar_events, sender_label, summary_text
+
+    run = {
+        "run_id": "r1", "source_name": "mahnbescheid.txt", "status": "failed", "error": "AgentError: drafter did not finish",
+        "triage": {"sender_name": None, "doc_type": "court_document"},
+        "deadlines": [{"purpose": "Object to the Mahnbescheid", "due_date": "2026-11-17", "basis": "estimated", "steps": ["…"]}],
+        "extraction": {"amounts": [{"value": 335.62, "purpose": "total claimed", "direction": "you_pay"}]},
+    }
+    assert sender_label(run) == "court document"
+    text = summary_text(run)
+    assert "stopped early" in text and "Tue 17.11.2026: Object to the Mahnbescheid (estimated)" in text and "335.62" in text
+    assert calendar_events(run)[0]["title"] == "Object to the Mahnbescheid (court document)"

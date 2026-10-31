@@ -1,0 +1,462 @@
+{
+  "name": "Briefkasten: inbox → analysis → calendar",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "read",
+        "format": "simple",
+        "downloadAttachments": true,
+        "dataPropertyAttachmentsPrefixName": "attachment_",
+        "options": {}
+      },
+      "id": "33e06aad-3a48-5ad6-a73d-af83fa7e67b1",
+      "name": "New e-mail (set IMAP credentials)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "Polls the inbox for unread e-mails. Use a dedicated address for official mail."
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "briefkasten",
+        "responseMode": "onReceived",
+        "options": {
+          "binaryPropertyName": "attachment_"
+        }
+      },
+      "id": "112bb15e-ed17-5f1c-b967-be959e7ee955",
+      "name": "Upload (webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        220
+      ],
+      "webhookId": "8a08fddb-4a23-5374-a818-bf9a56d43bab",
+      "notes": "curl -F file=@letter.pdf http://127.0.0.1:5678/webhook/briefkasten"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "80df0224-bb12-5496-950f-13390b2954c7",
+              "leftValue": "={{ !!($binary && $binary.attachment_0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "253f7c2f-8495-55f7-853a-c348ae1a59af",
+      "name": "Has a file?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        110
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://briefkasten:8000/api/jobs",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "attachment_0"
+            },
+            {
+              "parameterType": "formData",
+              "name": "bundesland",
+              "value": "BW"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e691d095-5617-5f3b-b78f-f52b49b56659",
+      "name": "Analyse the file",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        0
+      ],
+      "notes": "Starts a run in Briefkasten. Change bundesland to your state (public holidays)."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://briefkasten:8000/api/jobs",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formData",
+              "name": "text",
+              "value": "={{ $json.textPlain || $json.body?.text || '' }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "bundesland",
+              "value": "BW"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0756ce97-0993-5d6d-bf2f-7ac5914a4cc3",
+      "name": "Analyse the text",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        220
+      ],
+      "notes": "For letters pasted into the e-mail body (or a webhook with a text field)."
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "4bdfecf0-5c2b-52fe-808b-d6af3ecf509b",
+      "name": "Wait 30 s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        110
+      ],
+      "webhookId": "b4488389-7ece-573e-879b-24034e081d4a"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'http://briefkasten:8000/api/jobs/' + $json.job_id }}",
+        "options": {}
+      },
+      "id": "510af6fd-0f72-5bb0-b4ac-afb9126d677e",
+      "name": "Check the run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        940,
+        110
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e5b84206-4456-50b1-9e4c-95fbe3534198",
+              "leftValue": "={{ $json.done }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a49486b3-d3fd-5039-95e9-163548485192",
+      "name": "Finished?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1160,
+        110
+      ],
+      "notes": "Runs take a few minutes on Groq's free tier; this loops until done."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bd0276a8-a749-5bdb-9e24-4798a84d8cc9",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "done",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d234c8bf-c13d-5bc1-8990-e55fe16b3f5e",
+      "name": "Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1380,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "calendar_events",
+        "include": "noOtherFields",
+        "options": {}
+      },
+      "id": "716251d1-1c2c-52eb-9edc-cdb4db9b0865",
+      "name": "One item per deadline",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "create",
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list",
+          "cachedResultName": "primary"
+        },
+        "start": "={{ $json.date }}",
+        "end": "={{ DateTime.fromISO($json.date).plus({ days: 1 }).toISODate() }}",
+        "additionalFields": {
+          "allday": "yes",
+          "summary": "={{ $json.title }}",
+          "description": "={{ $json.description }}"
+        }
+      },
+      "id": "ca295fef-c85c-5312-ad54-1ec227d0e5a7",
+      "name": "Add to Google Calendar (set credentials)",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        1820,
+        -80
+      ],
+      "notes": "All-day event per deadline; the description shows how the date was worked out."
+    },
+    {
+      "parameters": {
+        "fromEmail": "briefkasten@example.org",
+        "toEmail": "you@example.org",
+        "subject": "={{ 'Briefkasten: ' + $json.title }}",
+        "emailFormat": "text",
+        "text": "={{ $json.summary_text + '\\n\\nOpen in Briefkasten: http://127.0.0.1:8000/#run/' + $json.run_id }}",
+        "options": {}
+      },
+      "id": "5c71b013-d86e-5319-9199-c97f67d8bcc8",
+      "name": "E-mail me the summary (set SMTP credentials)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1600,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "briefkasten@example.org",
+        "toEmail": "you@example.org",
+        "subject": "Briefkasten could not analyse a document",
+        "emailFormat": "text",
+        "text": "={{ 'The analysis failed: ' + $json.error }}",
+        "options": {}
+      },
+      "id": "3ec9a2b0-8150-5692-b670-7762fa6da894",
+      "name": "E-mail me the failure (set SMTP credentials)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1600,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "New e-mail (set IMAP credentials)": {
+      "main": [
+        [
+          {
+            "node": "Has a file?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload (webhook)": {
+      "main": [
+        [
+          {
+            "node": "Has a file?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has a file?": {
+      "main": [
+        [
+          {
+            "node": "Analyse the file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Analyse the text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyse the file": {
+      "main": [
+        [
+          {
+            "node": "Wait 30 s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyse the text": {
+      "main": [
+        [
+          {
+            "node": "Wait 30 s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 30 s": {
+      "main": [
+        [
+          {
+            "node": "Check the run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check the run": {
+      "main": [
+        [
+          {
+            "node": "Finished?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finished?": {
+      "main": [
+        [
+          {
+            "node": "Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 30 s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "One item per deadline",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "E-mail me the summary (set SMTP credentials)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E-mail me the failure (set SMTP credentials)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One item per deadline": {
+      "main": [
+        [
+          {
+            "node": "Add to Google Calendar (set credentials)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false
+}

@@ -1,0 +1,49 @@
+# Briefkasten + n8n on one private network.
+#
+#   docker compose up -d
+#   Briefkasten UI:  http://127.0.0.1:8000      n8n editor: http://127.0.0.1:5678
+#
+# Both are bound to 127.0.0.1 only. Briefkasten runs in full mode (uploads, stored runs) because n8n
+# needs it, and the full app has no login: never publish port 8000 beyond this machine. n8n reaches it
+# inside the network at http://briefkasten:8000.
+#
+# Import integrations/n8n/briefkasten-inbox.json in n8n (Workflows → Import from file), then add your
+# IMAP, Google Calendar and SMTP credentials to the nodes marked "set credentials".
+
+services:
+  briefkasten:
+    build: .
+    env_file: .env # GROQ/OPENAI keys, BRIEFKASTEN_STATE, redact terms, optional LANGFUSE_* keys
+    environment:
+      BRIEFKASTEN_DEMO_ONLY: "0"
+      BRIEFKASTEN_DATA_DIR: /data
+    # --allow-public: listen on the container network so n8n can reach it; the port below stays local-only
+    command: ["briefkasten", "serve", "--host", "0.0.0.0", "--port", "8000", "--allow-public"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - briefkasten-data:/data # runs, including the redaction map: keep this volume private
+    restart: unless-stopped
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.43.4
+    environment:
+      GENERIC_TIMEZONE: Europe/Berlin
+      TZ: Europe/Berlin
+      N8N_HOST: 127.0.0.1
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      N8N_SECURE_COOKIE: "false" # plain http on localhost; put n8n behind HTTPS before exposing it anywhere
+      WEBHOOK_URL: http://127.0.0.1:5678/
+      N8N_DIAGNOSTICS_ENABLED: "false"
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+    depends_on:
+      - briefkasten
+    restart: unless-stopped
+
+volumes:
+  briefkasten-data:
+  n8n-data:

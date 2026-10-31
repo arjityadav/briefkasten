@@ -132,6 +132,8 @@ def render(state: RunState, verbose: bool = False) -> str:
         out.append(click.style(textwrap.indent(d.body_en, "  "), dim=True))
         out.append(_wrap(f"Note: {d.notes_en}"))
 
+    if state.trace_url or state.trace_id:
+        out.append(_h("Langfuse trace") + "  " + click.style(state.trace_url or state.trace_id, fg="cyan"))
     if state.trace:
         total_ms = sum(e.duration_ms for e in state.trace)
         toks = sum(e.input_tokens + e.output_tokens for e in state.trace)

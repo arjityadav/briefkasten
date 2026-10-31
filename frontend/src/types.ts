@@ -207,6 +207,8 @@ export interface RunView {
   draft: Draft | null;
   analysis: Analysis | null;
   supervisor_notes: string | null;
+  trace_id: string | null;
+  trace_url: string | null;
   trace: TraceEvent[];
   redaction_count: number;
 }
@@ -228,6 +230,7 @@ export interface Meta {
   imprint_url: string;
   privacy_url: string;
   image_reader: string;
+  tracing: boolean;
   demo_descriptions: Record<string, DemoInfo>;
 }
 

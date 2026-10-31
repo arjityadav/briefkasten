@@ -7,6 +7,7 @@ and never lists one visitor's runs to another.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import date
 from functools import lru_cache
@@ -21,6 +22,8 @@ from .config import Settings
 from .demo import DEMO_DESCRIPTIONS, DEMO_REDACT_TERMS, available_replays, load_replay
 from .documents import UnsupportedDocument
 from .jobs import JobRegistry
+from .notify import calendar_events, sender_label, summary_text
+from .observability import observer
 from .llm import LLMError, build_router
 from .models import REPLY_INTENTS
 from .orchestrator import ApprovalError, Briefkasten
@@ -33,7 +36,13 @@ MAX_FILES = 12  # e.g. one photo per page
 WEB = Path(__file__).parent / "web"
 DIST = WEB / "dist"  # the TypeScript UI, built from frontend/ with `npm run build`
 
-app = FastAPI(title="Briefkasten", version="0.1.0", description="Multi-agent assistant for official German mail")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    observer().flush()  # send buffered traces before the server stops
+
+
+app = FastAPI(title="Briefkasten", version="0.1.0", description="Multi-agent assistant for official German mail", lifespan=lifespan)
 jobs = JobRegistry()
 if (DIST / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
@@ -104,6 +113,7 @@ def meta() -> dict:
         "demos": available_replays(),
         "demo_only": s.demo_only,
         "image_reader": s.image_reader,
+        "tracing": observer().enabled,
         "demo_descriptions": DEMO_DESCRIPTIONS,
         "imprint_url": s.imprint_url,
         "privacy_url": s.privacy_url,
@@ -199,6 +209,30 @@ def create_demo_job(name: str, pace: float = DEMO_PACE) -> dict:
     letter, intent, router = load_replay(name, delay=min(max(pace, 0.0), 3.0))
     bk = Briefkasten(router, replace(settings(), redact_terms=DEMO_REDACT_TERMS), store())
     return {"job_id": jobs.start(lambda progress: bk.process(letter, source_name=f"{name}.txt", reply_intent=intent, progress=progress)).id}
+
+
+@app.get("/api/jobs/{job_id}")
+def job_status(job_id: str) -> dict:
+    """Plain JSON for polling (e.g. from n8n). When done, includes calendar events and a text summary."""
+    job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(404, "Job not found")
+    events, done = job.since(0)
+    out: dict = {"job_id": job_id, "done": done, "status": "running", "steps": sum(e["type"] == "decided" for e in events)}
+    last = events[-1] if events else None
+    if last and last["type"] == "error":
+        out |= {"status": "error", "error": last["detail"]}
+    elif last and last["type"] == "done":
+        run = last["run"]
+        out |= {
+            "status": "done",
+            "run_id": run["run_id"],
+            "run": run,
+            "title": sender_label(run),
+            "calendar_events": calendar_events(run),
+            "summary_text": summary_text(run),
+        }
+    return out
 
 
 @app.get("/api/jobs/{job_id}/events")

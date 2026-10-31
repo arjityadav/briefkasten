@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from briefkasten.config import Settings  # noqa: E402
 from briefkasten.demo import DEMO_REDACT_TERMS, SAMPLES  # noqa: E402
 from briefkasten.llm import build_router  # noqa: E402
+from briefkasten.observability import observer  # noqa: E402
 from briefkasten.orchestrator import Briefkasten  # noqa: E402
 
 TODAY = date(2026, 10, 28)  # fixed so "days left" is reproducible
@@ -68,6 +69,8 @@ def main() -> None:
     settings = Settings.from_env(redact_terms=DEMO_REDACT_TERMS, data_dir=Path(tempfile.mkdtemp()))
     bk = Briefkasten(build_router(settings), settings)
     rows = []
+    # With Langfuse on, every run of this eval is one trace in this session, scored per check.
+    session = f"eval-{datetime.now():%Y%m%d-%H%M%S}-{settings.model.replace('/', '_')}"
     for gold_path in sorted((SAMPLES / "gold").glob("*.json")):
         if args.only and args.only not in gold_path.stem:
             continue
@@ -77,7 +80,7 @@ def main() -> None:
         for i in range(args.repeats):
             t0 = time.perf_counter()
             received = date.fromisoformat(gold["received_on"]) if gold.get("received_on") else None
-            state = bk.process(letter, source_name=gold["letter"], today=TODAY, received_on=received)
+            state = bk.process(letter, source_name=gold["letter"], today=TODAY, received_on=received, session_id=session)
             checks = score(state, gold) if state.status != "failed" else {"run_succeeded": False}
             rows.append(
                 {
@@ -91,6 +94,9 @@ def main() -> None:
                     "extraction_rounds": state.verification.extraction_rounds if state.verification else None,
                 }
             )
+            for check, passed in checks.items():
+                observer().score(state.trace_id, f"eval:{check}", float(passed))
+            observer().score(state.trace_id, "eval:score", sum(checks.values()) / max(len(checks), 1))
             ok = sum(checks.values())
             print(f"{gold_path.stem:<28} #{i}  {ok}/{len(checks)} checks  {rows[-1]['seconds']:>5}s  "
                   f"{rows[-1]['tokens']:>6} tok  " + " ".join(k for k, v in checks.items() if not v))
@@ -101,6 +107,9 @@ def main() -> None:
     out = Path(__file__).parent / f"results-{datetime.now():%Y%m%d-%H%M%S}.json"
     out.write_text(json.dumps({"model": settings.model, "model_fast": settings.model_fast, "rows": rows}, indent=2, default=str))
     print(f"Saved {out}")
+    if observer().enabled:
+        observer().flush()
+        print(f"Langfuse session: {session} (filter traces by this session to compare runs)")
 
 
 if __name__ == "__main__":

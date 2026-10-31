@@ -429,3 +429,36 @@ def test_form_fields_must_exist_on_the_form(settings):
     assert state.status == "done" and state.draft is None, state.error  # a form needs no reply letter
     assert "Steuer-Identifikationsnummer" in steps(state, "form")[0].note
     assert [f.label for f in state.analysis.fields] == ["Tag des Einzugs", "Religionsgesellschaft"]
+
+
+def test_misspelt_tool_names_get_a_hint_and_dont_use_up_steps(settings):
+    """Seen live with Qwen on Groq: the drafter kept calling `check_blank` instead of `check_draft`."""
+    from briefkasten.llm import ChatResult
+
+    class Fumbling(ScriptedLLM):
+        fumbles = 0
+
+        def chat(self, **kw):
+            if kw["agent"] == "drafter" and self.fumbles < 4:  # more than its 2 real steps would allow before
+                self.fumbles += 1
+                return ChatResult("", [], self.model, rejected="tool call validation failed: attempted to call tool 'check_blank' which was not in request.tools")
+            return super().chat(**kw)
+
+    state, llm = run_with(settings, "finanzamt_bescheid", "file_objection", llm_cls=Fumbling)
+    assert state.status == "awaiting_approval", state.error
+    prompts = [c["prompt"] for c in llm.calls if c["agent"] == "drafter"]
+    assert "Did you mean `check_draft`?" in prompts[0] and "Available tools: find_in_letter, check_draft, submit" in prompts[0]
+    assert len([e for e in steps(state, "drafter") if e.note and "rejected by the API" in e.note]) == 4
+
+
+def test_endless_rejected_calls_still_end(settings):
+    from briefkasten.llm import ChatResult
+
+    class Broken(ScriptedLLM):
+        def chat(self, **kw):
+            if kw["agent"] == "triage":
+                return ChatResult("", [], self.model, rejected="attempted to call tool 'json' which was not in request.tools")
+            return super().chat(**kw)
+
+    state, _ = run_with(settings, "finanzamt_bescheid", llm_cls=Broken)
+    assert state.status == "failed" and "rejected" in state.error

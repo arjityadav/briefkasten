@@ -218,3 +218,25 @@ def test_rate_limits_have_their_own_longer_budget(monkeypatch):
     monkeypatch.setattr(http.urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setattr(http.time, "sleep", lambda s: None)
     assert http.post_json("https://x", {}, {}) == {"ok": True} and calls["n"] == 7
+
+
+def test_daily_quota_fails_fast_instead_of_waiting(monkeypatch):
+    import io
+    import urllib.error
+
+    import pytest
+
+    from briefkasten.llm import LLMError, http
+
+    body = b'{"error":{"message":"Rate limit reached for model `qwen/qwen3.8-27b` on tokens per day (TPD): Limit 200000, Used 196897. Please try again in 4m55s.","code":"rate_limit_exceeded"}}'
+    calls, sleeps = {"n": 0}, []
+
+    def fake_urlopen(req, timeout, context):
+        calls["n"] += 1
+        raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {"retry-after": "295"}, io.BytesIO(body))
+
+    monkeypatch.setattr(http.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(http.time, "sleep", sleeps.append)
+    with pytest.raises(LLMError, match="Daily token quota.*tokens per day"):
+        http.post_json("https://x", {}, {})
+    assert calls["n"] == 1 and not sleeps

@@ -24,6 +24,7 @@ from .agents.base import _report
 from .config import Settings
 from .llm import Image, LLMError, LLMRouter
 from .models import TraceEvent
+from .observability import observer
 
 ImageReader = Callable[[list[Image], list[TraceEvent]], str]
 
@@ -70,10 +71,12 @@ def ocr_reader(binary: str | None = None) -> ImageReader:
         for n, img in enumerate(images, 1):
             _report(trace, "started", "ocr", n)
             t0 = time.perf_counter()
-            # --psm 4: a single column of text of variable sizes, which suits letters better than full auto layout
-            res = subprocess.run(
-                [binary, "stdin", "stdout", "-l", lang, "--psm", "4"], input=img.data, capture_output=True, timeout=120
-            )
+            # Only metadata goes to the trace: the OCR text is the unredacted letter.
+            with observer().observe("ocr", kind="span", metadata={"page": n, "lang": lang, "bytes": len(img.data)}):
+                # --psm 4: a single column of text of variable sizes, which suits letters better than full auto layout
+                res = subprocess.run(
+                    [binary, "stdin", "stdout", "-l", lang, "--psm", "4"], input=img.data, capture_output=True, timeout=120
+                )
             if res.returncode != 0:
                 raise ReaderError(f"Tesseract could not read page {n}: {res.stderr.decode(errors='replace')[:300]}")
             text = res.stdout.decode("utf-8", errors="replace")

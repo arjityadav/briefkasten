@@ -12,6 +12,7 @@ grounding checks, call budgets, and the human approval gate.
 from __future__ import annotations
 
 import secrets
+from collections import Counter
 from datetime import date, datetime
 
 from .agents import (
@@ -30,6 +31,7 @@ from .agents import (
 )
 from .config import Settings
 from .documents import load_documents
+from .observability import current_run, observer
 from .readers import build_image_reader
 from .llm import LLMRouter
 from .models import REPLY_INTENTS, RunState, TraceEvent, Verification
@@ -73,6 +75,11 @@ class Briefkasten:
 
     def process_files(self, files: list[tuple[bytes, str]], progress: Progress | None = None, **kwargs) -> RunState:
         """Several files that make up one document, e.g. one photo per page, in order."""
+        name = files[0][1] if len(files) == 1 else f"{files[0][1]} (+{len(files) - 1} more)"
+        with self._trace(name, kwargs.get("session_id")):  # intake (OCR, vision) belongs to the same trace
+            return self._process_files(files, name, progress, **kwargs)
+
+    def _process_files(self, files: list[tuple[bytes, str]], name: str, progress: Progress | None, **kwargs) -> RunState:
         intake_trace: list[TraceEvent] = LiveTrace(progress=progress)
         used: list[str] = []
 
@@ -81,7 +88,6 @@ class Briefkasten:
             return build_image_reader(self.settings, self.router)(images, trace)
 
         text = load_documents(files, read_images, intake_trace)
-        name = files[0][1] if len(files) == 1 else f"{files[0][1]} (+{len(files) - 1} more)"
         return self.process(
             text, source_name=name, extra_trace=intake_trace, progress=progress, image_reader=used[0] if used else None, **kwargs
         )
@@ -97,8 +103,23 @@ class Briefkasten:
         extra_trace: list[TraceEvent] | None = None,
         progress: Progress | None = None,
         image_reader: str | None = None,
+        session_id: str | None = None,
     ) -> RunState:
-        """Run the agents on a letter. `progress`, if given, is told about every agent step as it happens."""
+        """Run the agents on a letter. `progress`, if given, is told about every agent step as it happens.
+
+        With tracing on, the run is one Langfuse trace (grouped by `session_id`, e.g. an eval run).
+        """
+        with self._trace(source_name, session_id):
+            return self._process(text, source_name, received_on, reply_intent, today, extra_trace, progress, image_reader)
+
+    def _trace(self, name: str, session_id: str | None):
+        r = self.router
+        model = r.for_tier("smart").model if r else "none"
+        tags = ["briefkasten", self.settings.provider] + (["replay"] if model == "scripted-replay" else [])
+        metadata = {"bundesland": self.settings.state.upper(), "model": model, "model_fast": r.for_tier("fast").model if r else "none"}
+        return observer().run(name, session_id=session_id, tags=tags, metadata=metadata)
+
+    def _process(self, text, source_name, received_on, reply_intent, today, extra_trace, progress, image_reader) -> RunState:
         if reply_intent and reply_intent not in REPLY_INTENTS:
             raise ValueError(f"Unknown intent '{reply_intent}'. Choose from: {', '.join(REPLY_INTENTS)}")
         if not text.strip():
@@ -122,6 +143,14 @@ class Briefkasten:
         state.trace = LiveTrace(state.trace, progress)  # same list type to pydantic, plus live reporting
         if progress is not None and hasattr(progress, "info"):
             progress.info(f"Redactor masked {len(redacted.mapping)} personal identifier(s) before any model call")
+        root = current_run()
+        state.trace_id = root.trace_id
+        # Counts by kind only: the values themselves never leave this machine.
+        masked = Counter(ph.strip("[]").rsplit("_", 1)[0] for ph in redacted.mapping)
+        root.update(
+            input={"letter": redacted.text, "reply_intent": reply_intent, "received_on": received_on, "image_reader": image_reader},
+            metadata={"masked": dict(masked), "run_id": state.run_id},
+        )
         ws = Workspace(state)
         try:
             report = self.supervisor.run(ws, state.trace)
@@ -140,8 +169,36 @@ class Briefkasten:
                     extraction_rounds=ws.extraction_rounds,
                     repaired=ws.repaired,
                 )
+            self._finish_trace(state, root)
             self.store.save(state)
         return state
+
+    def _finish_trace(self, state: RunState, root) -> None:
+        if not state.trace_id:
+            return
+        root.update(
+            output={
+                "status": state.status,
+                "doc_type": state.triage.doc_type.value if state.triage else None,
+                "urgency": state.urgency,
+                "deadlines": [{"id": d.id, "due": d.due_date, "basis": d.basis} for d in state.deadlines],
+                "analysis": state.analysis.family if state.analysis else None,
+                "draft": state.draft.intent if state.draft else None,
+                "notes": state.supervisor_notes,
+            },
+            **({"level": "ERROR", "status_message": state.error} if state.error else {}),
+        )
+        v = state.verification
+        scores: dict[str, float | str] = {
+            "status": state.status,
+            "agent_steps": len(state.trace),
+            "tokens": sum(e.input_tokens + e.output_tokens for e in state.trace),
+        }
+        if v:
+            scores |= {"checks_passed": float(v.passed), "quotes_checked": v.quotes_checked, "repaired": len(v.repaired)}
+        for name, value in scores.items():
+            root.score_trace(name, value)
+        state.trace_url = observer().trace_url(state.trace_id)
 
     # ------------------------------------------------------------------ human in the loop
 

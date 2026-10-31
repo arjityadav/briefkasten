@@ -10,6 +10,7 @@ import click
 
 from .config import Settings
 from .models import REPLY_INTENTS
+from .observability import observer
 from .orchestrator import ApprovalError, Briefkasten
 from .report import render
 from .store import RunNotFound
@@ -51,6 +52,8 @@ def _live(app: Briefkasten, label: str | None = None):
         f"{app.settings.provider} · smart {r.for_tier('smart').model} · fast {r.for_tier('fast').model}"
     )
     progress.info(f"live agent view ({models}); -q to hide")
+    if observer().enabled:
+        progress.info("tracing to Langfuse is on (BRIEFKASTEN_TRACING=off to disable)")
     return progress
 
 
@@ -90,6 +93,7 @@ def process(files: tuple[Path, ...], received, intent, bundesland, as_json, verb
         raise click.ClickException(str(e)) from None
     if progress:
         progress.info(f"run finished: {state.status}\n")
+    observer().flush()  # send the trace before the process exits
     click.echo(json.dumps(state.public_view(), indent=2, ensure_ascii=False) if as_json else render(state, verbose))
     if state.status == "awaiting_approval" and not as_json:
         click.echo(f"\nNext: briefkasten approve {state.run_id}")
@@ -114,6 +118,7 @@ def demo(name: str, verbose: bool, quiet: bool) -> None:
     state = app.process(letter, source_name=f"{name}.txt", reply_intent=intent, progress=progress)
     if progress:
         progress.info(f"run finished: {state.status}\n")
+    observer().flush()
     click.echo(click.style(f"[demo] replaying recorded agent outputs for {name}; everything else runs live\n", fg="cyan"))
     click.echo(render(state, verbose))
     click.echo(click.style(f"\n[demo] {len(state.redactions)} personal identifiers were masked before any model saw the letter.", fg="cyan"))

@@ -228,6 +228,7 @@ What it does:
 | `POST` | `/api/runs` | multipart: `file` or `text`, optional `received_on`, `intent`, `bundesland` |
 | `POST` | `/api/demo/{name}` | replay a sample without an API key |
 | `POST` | `/api/jobs`, `/api/demo/{name}/job?pace=0.7` | start a run in the background (same form fields as `/api/runs`) |
+| `GET` | `/api/jobs/{id}` | job status as plain JSON for polling; when done: the run, `calendar_events`, `summary_text` |
 | `GET` | `/api/jobs/{id}/events` | Server-Sent Events: every agent step, then `done` with the run; resumable via `Last-Event-ID` |
 | `GET` | `/api/runs`, `/api/runs/{id}` | list / fetch (never includes the redaction map) |
 | `POST` | `/api/runs/{id}/approve` | `{ "body_de": "...", "subject_de": "..." }`, 409 while blanks remain |
@@ -259,10 +260,44 @@ Letting the public analyse *real* letters raises legal questions (Rechtsdienstle
 GDPR for tax and health data sent to a US model provider) that need a lawyer, and the app would need accounts and
 encrypted, expiring storage first.
 
+## Automation with n8n
+
+`docker-compose.yml` runs Briefkasten next to a self-hosted [n8n](https://n8n.io), and
+`integrations/n8n/briefkasten-inbox.json` is a ready workflow: new e-mail (or a webhook upload) → Briefkasten →
+every deadline as an all-day Google Calendar event → a summary e-mail. Briefkasten's `GET /api/jobs/{id}` returns
+plain JSON for polling, with `calendar_events` and `summary_text` once the run is done. Setup and privacy notes:
+[integrations/n8n/README.md](integrations/n8n/README.md).
+
+## Tracing with Langfuse
+
+Optional. Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` (and `LANGFUSE_BASE_URL` for a self-hosted server;
+Langfuse Cloud EU is the default) and install `briefkasten[observability]`. Every run becomes one trace:
+
+```
+run (agent)                              input: redacted letter, masked-identifier counts · output: outcome
+ ├─ supervisor (agent)
+ │   ├─ supervisor step 1 (generation)   model, full prompt, reply, tool calls, tokens
+ │   ├─ triage_letter (tool)
+ │   │   └─ triage (agent) → steps, find_in_letter, submit
+ │   ├─ explain_letter / extract_facts   parallel branches, nested correctly across threads
+ │   │   └─ extractor → submit (WARNING: "amount 283.47 does not appear in the letter") → fixed
+ │   └─ ...
+ └─ scores: checks_passed, quotes_checked, repaired, agent_steps, tokens, status
+```
+
+`briefkasten process` prints the trace link, and the web UI's "How it was made" tab links to it. `evals/run_eval.py` puts
+each eval run in its own Langfuse session and scores every check (`eval:deadline:payment`, `eval:score`, ...), so
+models and prompt versions can be compared side by side.
+
+Privacy: traces contain what the models already see (redacted text). The unredacted intake never goes in: the raw
+letter, scanned images and their transcription or OCR text are left out, and a mask hook re-applies the identifier
+patterns to everything as a second layer. The agents call a small observer interface (`observability.py`), so
+Langfuse stays an optional dependency and the tests run without it.
+
 ## Testing and evaluation
 
 ```bash
-pytest                       # 103 tests: deadline law, holidays, redaction, grounding, agents, file formats, providers, API
+pytest                       # 112 tests: deadline law, holidays, redaction, grounding, agents, file formats, providers, API
 python evals/run_eval.py     # real model against hand-labelled letters
 ```
 

@@ -46,6 +46,9 @@ def post_json(url: str, payload: dict, headers: dict[str, str], *, timeout: int 
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", errors="replace")[:2000]
+            if e.code == 429 and _daily_quota(detail):
+                # Waiting a minute can't help with a per-day quota: stop now and say so.
+                raise LLMError(f"Daily token quota of the model provider is used up. {_quota_message(detail)}") from e
             if e.code == 429 and rate_limited < RATE_LIMIT_RETRIES:
                 rate_limited += 1
                 delay = _retry_delay(e.headers.get("retry-after"), rate_limited - 1)
@@ -66,6 +69,18 @@ def post_json(url: str, payload: dict, headers: dict[str, str], *, timeout: int 
                 attempt += 1
                 continue
             raise LLMError(f"Could not reach {url}: {getattr(e, 'reason', e)}") from e
+
+
+def _daily_quota(detail: str) -> bool:
+    d = detail.lower()
+    return "per day" in d or "(tpd)" in d or "(rpd)" in d
+
+
+def _quota_message(detail: str) -> str:
+    try:
+        return json.loads(detail)["error"]["message"][:400]
+    except (ValueError, KeyError, TypeError):
+        return detail[:400]
 
 
 def _retry_delay(retry_after: str | None, attempt: int) -> float:

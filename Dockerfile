@@ -13,10 +13,14 @@ WORKDIR /app
 # behind your own login, run with -e BRIEFKASTEN_DEMO_ONLY=0 and add --allow-public to the command.
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 BRIEFKASTEN_DATA_DIR=/data BRIEFKASTEN_DEMO_ONLY=1
 
+# Local OCR for scans and photos (the default image reader): the image never leaves the container
+RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY --from=ui /ui/dist ./src/briefkasten/web/dist
-RUN pip install --no-cache-dir ".[web,scans,photos]" && useradd --create-home app && mkdir /data && chown app /data
+RUN pip install --no-cache-dir ".[web,scans,photos,observability]" && useradd --create-home app && mkdir /data && chown app /data
 
 USER app
 VOLUME ["/data"]
