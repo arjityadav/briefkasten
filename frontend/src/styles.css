@@ -126,7 +126,10 @@ a.button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: transform 0.1s, background 0.15s;
+  transition:
+    transform 160ms var(--ease-out),
+    background-color 150ms ease,
+    border-color 150ms ease;
 }
 .primary,
 a.button.primary {
@@ -136,8 +139,15 @@ a.button.primary {
 :root[data-theme="dark"] .primary {
   color: #0f172a;
 }
-.primary:not(:disabled):hover {
-  transform: translateY(-1px);
+/* pressing confirms the click; no hover lift, it only flickers on touch screens */
+.primary:not(:disabled):active,
+.secondary:not(:disabled):active,
+.danger:not(:disabled):active,
+a.button:active,
+.icon:not(:disabled):active,
+.chip:active,
+.agent-chip:active {
+  transform: scale(0.97);
 }
 .primary.big {
   width: 100%;
@@ -437,7 +447,9 @@ footer {
   gap: 4px;
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
 }
 .drop:hover,
 .drop.over {
@@ -523,11 +535,20 @@ footer {
   flex-direction: column;
   gap: 6px;
   box-shadow: var(--shadow);
-  transition: transform 0.15s, border-color 0.15s;
+  transition:
+    transform 160ms var(--ease-out),
+    border-color 150ms ease;
 }
 .sample:hover:not(:disabled) {
-  transform: translateY(-2px);
   border-color: var(--brand);
+}
+@media (hover: hover) and (pointer: fine) {
+  .sample:hover:not(:disabled) {
+    transform: translateY(-2px);
+  }
+}
+.sample:active:not(:disabled) {
+  transform: scale(0.98);
 }
 .sample .kind {
   width: 34px;
@@ -658,6 +679,14 @@ footer {
   animation: shake 0.35s;
 }
 .node.selected .body {
+  stroke-width: 4.5;
+}
+/* SVG groups don't draw a reliable outline: show keyboard focus on the node itself */
+.node:focus {
+  outline: none;
+}
+.node:focus-visible .body {
+  stroke: var(--brand);
   stroke-width: 4.5;
 }
 .node .pulse {
@@ -971,11 +1000,20 @@ footer {
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow);
-  transition: transform 0.15s, border-color 0.15s;
+  transition:
+    transform 160ms var(--ease-out),
+    border-color 150ms ease;
 }
 .stat:hover:not(:disabled) {
-  transform: translateY(-2px);
   border-color: var(--brand);
+}
+@media (hover: hover) and (pointer: fine) {
+  .stat:hover:not(:disabled) {
+    transform: translateY(-2px);
+  }
+}
+.stat:active:not(:disabled) {
+  transform: scale(0.98);
 }
 .stat:disabled {
   opacity: 0.7;
@@ -1808,6 +1846,47 @@ mark {
     padding: 8px 12px;
   }
 }
+/* ------------------------------------------------------------------ loading */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+.sk {
+  display: block;
+  border-radius: 8px;
+  background: var(--line);
+  animation: breathe 1.2s ease-in-out infinite alternate;
+}
+.sk-title {
+  height: 40px;
+  width: min(560px, 90%);
+}
+.sk-line {
+  height: 16px;
+  width: min(760px, 100%);
+}
+.sk-line.short {
+  width: min(420px, 70%);
+}
+.sk-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+  max-width: 1000px;
+}
+.sk-card {
+  height: 180px;
+  border-radius: var(--radius);
+}
+@keyframes breathe {
+  to {
+    opacity: 0.5;
+  }
+}
+
 /* ------------------------------------------------------------------ progress */
 .sr-only {
   position: absolute;
@@ -1940,11 +2019,12 @@ mark {
     display: none; /* the lit edge and the log already say who has the work */
   }
 }
+/* Reduced motion: no movement, but state changes (colour, opacity) still fade so they stay legible. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation: none !important;
-    transition: none !important;
+    transition-property: color, background-color, border-color, opacity, box-shadow !important;
   }
 }

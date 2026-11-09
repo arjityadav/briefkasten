@@ -152,7 +152,19 @@ export default function App() {
         )}
 
         <main>
-          {!meta && <div className="card muted">Loading…</div>}
+          {!meta && (
+            // the shape of the home page, so nothing jumps when it arrives
+            <div className="skeleton" aria-busy="true" aria-label="Loading">
+              <span className="sk sk-title" />
+              <span className="sk sk-line" />
+              <span className="sk sk-line short" />
+              <div className="sk-cards">
+                {[0, 1, 2, 3].map((i) => (
+                  <span key={i} className="sk sk-card" />
+                ))}
+              </div>
+            </div>
+          )}
           {meta && view === "home" && <Home meta={meta} busy={busy} onStartJob={(fd) => start(() => api.startJob(fd))} onStartDemo={(n) => start(() => api.startDemo(n))} />}
           {view === "live" && <LiveScreen live={live} filter={filter} onFilter={setFilter} onShowResult={showResult} />}
           {view === "result" && run && <ResultView run={run} live={live} onRunChange={(r) => (setRun(r), loadRecent())} />}
