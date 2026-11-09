@@ -9,14 +9,14 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .config import Settings
 from .demo import DEMO_DESCRIPTIONS, DEMO_REDACT_TERMS, available_replays, load_replay
@@ -25,7 +25,7 @@ from .jobs import JobRegistry
 from .notify import calendar_events, sender_label, summary_text
 from .observability import observer
 from .llm import LLMError, build_router
-from .models import REPLY_INTENTS
+from .models import REPLY_INTENTS, AutomationNote
 from .orchestrator import ApprovalError, Briefkasten
 from .store import MemoryRunStore, RunNotFound, RunStore
 from .tools.holidays_de import STATES
@@ -81,7 +81,8 @@ DEMO_REFUSAL = "This public demo only runs the sample letters. Run Briefkasten y
 @app.middleware("http")
 async def demo_only_guard(request: Request, call_next):
     """In demo-only mode, refuse uploads before the request body is read, so no real letter is ever received."""
-    if settings().demo_only and request.method == "POST" and request.url.path.rstrip("/") in ("/api/runs", "/api/jobs"):
+    path = request.url.path.rstrip("/")
+    if settings().demo_only and request.method == "POST" and (path in ("/api/runs", "/api/jobs") or path.endswith("/notes")):
         return JSONResponse({"detail": DEMO_REFUSAL}, status_code=403)
     return await call_next(request)
 
@@ -219,7 +220,8 @@ def job_status(job_id: str) -> dict:
         raise HTTPException(404, "Job not found")
     events, done = job.since(0)
     out: dict = {"job_id": job_id, "done": done, "status": "running", "steps": sum(e["type"] == "decided" for e in events)}
-    last = events[-1] if events else None
+    # the outcome, not the last event: automation notes can arrive after the run finished
+    last = next((e for e in reversed(events) if e["type"] in ("done", "error")), None)
     if last and last["type"] == "error":
         out |= {"status": "error", "error": last["detail"]}
     elif last and last["type"] == "done":
@@ -233,6 +235,37 @@ def job_status(job_id: str) -> dict:
             "summary_text": summary_text(run),
         }
     return out
+
+
+MAX_NOTES = 50
+
+
+class NoteBody(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+    source: str = Field("n8n", min_length=1, max_length=20)
+
+
+@app.post("/api/jobs/{job_id}/notes")
+def add_note(job_id: str, body: NoteBody) -> dict:
+    """A status report from an automation (e.g. n8n: "2 deadlines added to Google Calendar").
+
+    Shown in the live log while the run is going, and kept with the run once it has finished,
+    since the calendar and e-mail steps happen after the agents are done.
+    """
+    job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(404, "Job not found")
+    events, _ = job.since(0)
+    if sum(e["type"] == "note" for e in events) >= MAX_NOTES:
+        raise HTTPException(429, f"At most {MAX_NOTES} notes per run")
+    job.emit("note", source=body.source, text=body.text)
+    done = next((e for e in events if e["type"] == "done"), None)
+    if done:
+        st = store()
+        state = st.load(done["run"]["run_id"])
+        state.notes.append(AutomationNote(source=body.source, text=body.text, at=datetime.now()))
+        st.save(state)
+    return {"ok": True, "saved_with_run": bool(done)}
 
 
 @app.get("/api/jobs/{job_id}/events")

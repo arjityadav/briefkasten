@@ -10,10 +10,15 @@ Upload (webhook) ───┘                         └─ no ──→ Analys
                                                                                  └──────────── no ────────────┤
                                                                                                               │ yes
                                         ┌──────────────────────────── Succeeded? ◄────────────────────────────┘
-                                        ├─ yes → One item per deadline → Add to Google Calendar
-                                        ├─ yes → E-mail me the summary
-                                        └─ no ─→ E-mail me the failure
+                                        ├─ yes → One item per deadline → Add to Google Calendar → Report: calendar
+                                        ├─ yes → E-mail me the summary ──────────────────────────→ Report: summary sent
+                                        └─ no ─→ E-mail me the failure ──────────────────────────→ Report: failure sent
 ```
+
+The *Report* nodes (plus *Report: received*, right after the analysis starts) tell Briefkasten what n8n did, so
+it shows in the same place as the agents' work: in the live log while the run is going, and in an *Automation*
+card on the result page afterwards (*"2 deadline(s) added to Google Calendar"*, *"Summary e-mailed"*). They are side
+branches set to continue on error, so a failed report never stops the workflow.
 
 ## Run it
 
@@ -45,6 +50,8 @@ curl -F file=@src/briefkasten/samples/letters/mahnbescheid.txt http://127.0.0.1:
 ## What Briefkasten provides for this
 
 - `POST /api/jobs` starts a run (multipart: `file` or `text`, optional `received_on`, `intent`, `bundesland`).
+- `POST /api/jobs/{id}/notes` (JSON `{"text": "...", "source": "n8n"}`, up to 300 characters, 50 per run) records
+  what an automation did. Refused in demo-only mode.
 - `GET /api/jobs/{id}` is plain JSON for polling. When `done`, it includes `calendar_events` (title, date,
   description with the legal working) and `summary_text` (a ready-to-send notification).
 

@@ -1889,6 +1889,25 @@ mark {
     padding: 8px 12px;
   }
 }
+/* ------------------------------------------------------------------ automation (n8n) */
+.source-chip {
+  display: inline-block;
+  font: 700 12px var(--mono);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--ink);
+  flex: none;
+}
+.automation ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 /* ------------------------------------------------------------------ loading */
 .skeleton {
   display: flex;

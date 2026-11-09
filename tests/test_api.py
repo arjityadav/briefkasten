@@ -204,3 +204,30 @@ def test_failed_run_summary_keeps_partial_results():
     text = summary_text(run)
     assert "stopped early" in text and "Tue 17.11.2026: Object to the Mahnbescheid (estimated)" in text and "335.62" in text
     assert calendar_events(run)[0]["title"] == "Object to the Mahnbescheid (court document)"
+
+
+def test_n8n_notes_reach_the_run_after_it_finished(client):
+    job = client.post("/api/demo/finanzamt_bescheid/job?pace=0").json()
+    _events(client, job["job_id"])  # runs to the end
+    r = client.post(f"/api/jobs/{job['job_id']}/notes", json={"text": "2 deadlines added to Google Calendar"})
+    assert r.status_code == 200 and r.json()["saved_with_run"]
+
+    status = client.get(f"/api/jobs/{job['job_id']}").json()
+    assert status["status"] == "done"  # a note after the end doesn't hide the outcome
+    run = client.get(f"/api/runs/{status['run_id']}").json()
+    assert [(n["source"], n["text"]) for n in run["notes"]] == [("n8n", "2 deadlines added to Google Calendar")]
+    events = _events(client, job["job_id"])
+    assert events[-1]["type"] == "note"
+
+
+def test_notes_are_bounded_and_need_a_known_job(client):
+    assert client.post("/api/jobs/nope/notes", json={"text": "hi"}).status_code == 404
+    job = client.post("/api/demo/finanzamt_bescheid/job?pace=0").json()
+    assert client.post(f"/api/jobs/{job['job_id']}/notes", json={"text": "x" * 301}).status_code == 422
+    assert client.post(f"/api/jobs/{job['job_id']}/notes", json={"text": ""}).status_code == 422
+
+
+def test_demo_only_refuses_notes(demo_client):
+    client, _ = demo_client
+    job = client.post("/api/demo/finanzamt_bescheid/job?pace=0").json()
+    assert client.post(f"/api/jobs/{job['job_id']}/notes", json={"text": "hi"}).status_code == 403

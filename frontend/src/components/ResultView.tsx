@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { api } from "../api";
 import type { LiveState } from "../agents";
 import { pretty } from "../text";
 import type { RunView } from "../types";
@@ -28,6 +29,23 @@ export function ResultView({ run, live, onRunChange }: Props) {
   const [filter, setFilter] = useState<string | null>(null);
 
   useEffect(() => setTab("overview"), [run.run_id]);
+
+  // Automations (n8n) report back after the run: calendar entries added, e-mail sent. Look for new
+  // reports while the run is fresh; afterwards they arrive with the run itself.
+  const [notes, setNotes] = useState(run.notes ?? []);
+  useEffect(() => {
+    setNotes(run.notes ?? []);
+    const fresh = Date.now() - new Date(run.created_at).getTime() < 10 * 60_000;
+    if (!fresh) return;
+    const timer = setInterval(() => {
+      api.run(run.run_id).then((r) => setNotes(r.notes ?? []), () => {});
+    }, 5000);
+    const stop = setTimeout(() => clearInterval(timer), 10 * 60_000);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(stop);
+    };
+  }, [run.run_id, run.created_at, run.notes]);
 
   const showQuote = (quote: string | null | undefined) => {
     if (!quote) return;
@@ -64,6 +82,19 @@ export function ResultView({ run, live, onRunChange }: Props) {
         )}
       </header>
       {run.error && <div className="card error-box">{run.error}</div>}
+      {notes.length > 0 && (
+        <div className="card automation" aria-live="polite">
+          <strong>Automation</strong>
+          <ul>
+            {notes.map((n, i) => (
+              <li key={i}>
+                <span className="source-chip">{n.source}</span> {n.text}{" "}
+                <span className="muted small">{new Date(n.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {run.image_reader && (
         <div className={`card note ${run.image_reader === "cloud" ? "warn" : ""}`}>
           Scan read by{" "}

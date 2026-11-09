@@ -129,6 +129,14 @@ function Row({ e, onFilter, maxTokens }: { e: JobEvent; onFilter: (a: string | n
           <span className="body">{e.text}</span>
         </div>
       );
+    case "note":
+      return (
+        <div className="row note-row">
+          {time}
+          <span className="source-chip">{e.source}</span>
+          <span className="body">{e.text}</span>
+        </div>
+      );
     case "done":
       return (
         <div className="row ok">

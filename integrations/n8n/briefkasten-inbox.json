@@ -314,6 +314,87 @@
         1600,
         300
       ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://briefkasten:8000/api/jobs/' + $json.job_id + '/notes' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: 'Received by n8n, analysis started' }) }}",
+        "options": {}
+      },
+      "id": "76287f7e-14b9-5933-8e13-2bd5bd514ef4",
+      "name": "Report: received",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        -80
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "Shows in Briefkasten's live log. A failed report never stops the workflow."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://briefkasten:8000/api/jobs/' + $('Check the run').first().json.job_id + '/notes' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $('One item per deadline').all().length + ' deadline(s) added to Google Calendar' }) }}",
+        "options": {}
+      },
+      "id": "59b6d6ae-7861-5b53-8730-f6a7feea23d9",
+      "name": "Report: calendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2040,
+        -80
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "Once, after all calendar entries.",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://briefkasten:8000/api/jobs/' + $('Check the run').first().json.job_id + '/notes' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: 'Summary e-mailed' }) }}",
+        "options": {}
+      },
+      "id": "7d7dad53-fffa-52a0-af93-312a3b99b3a6",
+      "name": "Report: summary sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1820,
+        120
+      ],
+      "onError": "continueRegularOutput",
+      "notes": ""
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://briefkasten:8000/api/jobs/' + $('Check the run').first().json.job_id + '/notes' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: 'Failure e-mailed' }) }}",
+        "options": {}
+      },
+      "id": "2d3adec2-2e2b-5e89-901b-f4c7cf8b494f",
+      "name": "Report: failure sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1820,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "notes": ""
     }
   ],
   "connections": {
@@ -364,6 +445,11 @@
             "node": "Wait 30 s",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Report: received",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -373,6 +459,11 @@
         [
           {
             "node": "Wait 30 s",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Report: received",
             "type": "main",
             "index": 0
           }
@@ -447,6 +538,39 @@
         [
           {
             "node": "Add to Google Calendar (set credentials)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to Google Calendar (set credentials)": {
+      "main": [
+        [
+          {
+            "node": "Report: calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-mail me the summary (set SMTP credentials)": {
+      "main": [
+        [
+          {
+            "node": "Report: summary sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-mail me the failure (set SMTP credentials)": {
+      "main": [
+        [
+          {
+            "node": "Report: failure sent",
             "type": "main",
             "index": 0
           }

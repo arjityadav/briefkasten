@@ -297,6 +297,14 @@ class TraceEvent(BaseModel):
     note: str | None = None
 
 
+class AutomationNote(BaseModel):
+    """A status report from an automation working on the run's results, e.g. n8n adding calendar entries."""
+
+    source: str = "n8n"
+    text: str
+    at: datetime
+
+
 class RunState(BaseModel):
     run_id: str
     created_at: datetime
@@ -324,6 +332,7 @@ class RunState(BaseModel):
     trace_id: str | None = Field(None, description="Langfuse trace of this run, when tracing is on")
     trace_url: str | None = None
     trace: list[TraceEvent] = Field(default_factory=list)
+    notes: list[AutomationNote] = Field(default_factory=list, description="Reports from automations such as n8n")
 
     def public_view(self) -> dict:
         """Everything except the placeholder map, for APIs and UIs."""

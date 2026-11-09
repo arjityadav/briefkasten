@@ -186,6 +186,12 @@ export interface TraceEvent {
   note: string | null;
 }
 
+export interface AutomationNote {
+  source: string;
+  text: string;
+  at: string;
+}
+
 export interface RunView {
   run_id: string;
   created_at: string;
@@ -210,6 +216,7 @@ export interface RunView {
   trace_id: string | null;
   trace_url: string | null;
   trace: TraceEvent[];
+  notes: AutomationNote[];
   redaction_count: number;
 }
 
@@ -248,5 +255,6 @@ export type JobEvent =
   | { type: "decided"; agent: string; step: number; tools: string[]; thought: string | null; duration_ms: number; tokens: number; t: number }
   | { type: "problem"; agent: string; step: number; note: string | null; t: number }
   | { type: "info"; text: string; t: number }
+  | { type: "note"; source: string; text: string; t: number }
   | { type: "done"; run: RunView; t: number }
   | { type: "error"; detail: string; t: number };

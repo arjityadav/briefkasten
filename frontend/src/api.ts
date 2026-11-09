@@ -28,7 +28,7 @@ export const api = {
   letterUrl: (id: string) => `/api/runs/${id}/letter`,
 };
 
-const EVENT_TYPES: JobEvent["type"][] = ["started", "decided", "problem", "info", "done", "error"];
+const EVENT_TYPES: JobEvent["type"][] = ["started", "decided", "problem", "info", "note", "done", "error"];
 
 /** Follow a job's Server-Sent Events. EventSource reconnects by itself and resumes from the last event id. */
 export function followJob(jobId: string, onEvent: (e: JobEvent) => void): () => void {
