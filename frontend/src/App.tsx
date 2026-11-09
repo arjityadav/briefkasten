@@ -116,11 +116,15 @@ export default function App() {
           <span className="slot" aria-hidden="true" />
           Briefkasten
         </button>
-        {meta?.demo_only && <span className="pill">public demo · sample documents only</span>}
+        {meta?.demo_only && (
+          <span className="pill">
+            public demo<span className="wide-only"> · sample documents only</span>
+          </span>
+        )}
         <span className="spacer" />
         {view !== "home" && (
-          <button className="secondary" onClick={goHome}>
-            + New document
+          <button className="secondary" onClick={goHome} aria-label="New document">
+            + New<span className="wide-only"> document</span>
           </button>
         )}
         <button className="icon theme" onClick={toggleTheme} aria-label="Toggle dark mode" title="Toggle dark mode">

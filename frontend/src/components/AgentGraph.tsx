@@ -1,9 +1,9 @@
 import { ALL_AGENTS, INTAKE, SPECIALISTS, SUPERVISOR, type AgentInfo, type LiveState, type NodeState } from "../agents";
 
 const W = 780;
-const H = 470;
+const H = 500;
 const CX = 450;
-const CY = 235;
+const CY = 250;
 const R = 30;
 
 interface Props {

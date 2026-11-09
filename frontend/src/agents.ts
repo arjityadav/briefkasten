@@ -34,7 +34,7 @@ export const SUPERVISOR: AgentInfo = {
   label: "Supervisor",
   kind: "ai",
   role: "Plans, delegates, judges, decides when it's done",
-  color: "#b45309",
+  color: "#0369a1",
 };
 
 export const ALL_AGENTS: Record<string, AgentInfo> = Object.fromEntries(

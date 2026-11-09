@@ -1,41 +1,45 @@
 :root {
-  --bg: #f6f3ee;
-  --paper: #fffdf8;
+  /* Option A, "calm and official": design-system/briefkasten/MASTER.md */
+  --bg: #f8fafc;
+  --paper: #ffffff;
   --card: #ffffff;
-  --ink: #1d2433;
-  --muted: #667085;
-  --line: #e6e1d8;
-  --brand: #b45309;
-  --brand-soft: #fdf1e3;
+  --ink: #0f172a;
+  --muted: #475569;
+  --line: #e2e8f0;
+  --brand: #0369a1;
+  --brand-soft: #e0f2fe;
+  --on-brand: #ffffff;
   --ok: #15803d;
   --ok-bg: #e8f6ec;
   --warn: #b45309;
   --warn-bg: #fff4e0;
-  --err: #b91c1c;
+  --err: #dc2626;
   --err-bg: #fdecec;
-  --info: #1d4ed8;
-  --shadow: 0 1px 2px rgba(29, 36, 51, 0.06), 0 4px 16px rgba(29, 36, 51, 0.05);
-  --radius: 14px;
+  --info: #0369a1;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(15, 23, 42, 0.05);
+  --radius: 12px;
+  --font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
 }
 
 :root[data-theme="dark"] {
-  --bg: #12151c;
-  --paper: #1a1e27;
-  --card: #1b1f29;
-  --ink: #e8eaf0;
-  --muted: #98a2b3;
-  --line: #2c3240;
-  --brand: #f59e0b;
-  --brand-soft: #2a2114;
+  --bg: #0b1120;
+  --paper: #111a2e;
+  --card: #162033;
+  --ink: #f1f5f9;
+  --muted: #94a3b8;
+  --line: #334155;
+  --brand: #38bdf8;
+  --brand-soft: #0c2a3d;
+  --on-brand: #0f172a; /* the light accent blue needs dark text */
   --ok: #4ade80;
   --ok-bg: #12291b;
   --warn: #fbbf24;
   --warn-bg: #2c2410;
   --err: #f87171;
   --err-bg: #2d1515;
-  --info: #93b4ff;
+  --info: #7dd3fc;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 18px rgba(0, 0, 0, 0.25);
   color-scheme: dark;
 }
@@ -48,7 +52,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 16px/1.6 var(--font);
 }
 button {
   font: inherit;
@@ -75,7 +79,7 @@ select:focus,
 textarea:focus,
 button:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 3px solid var(--brand);
   outline-offset: 2px;
 }
 a {
@@ -92,7 +96,7 @@ h4 {
   color: var(--muted);
 }
 .small {
-  font-size: 13px;
+  font-size: 14px;
 }
 .pad {
   padding: 12px;
@@ -125,10 +129,10 @@ a.button {
 .primary,
 a.button.primary {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
 }
 :root[data-theme="dark"] .primary {
-  color: #1a1206;
+  color: #0f172a;
 }
 .primary:not(:disabled):hover {
   transform: translateY(-1px);
@@ -157,7 +161,7 @@ a.button.primary {
   padding: 0;
   color: var(--brand);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14px;
 }
 .link:hover {
   text-decoration: underline;
@@ -178,7 +182,7 @@ a.button.primary {
   gap: 4px;
   border-radius: 999px;
   padding: 2px 10px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   border: 1px solid var(--line);
   background: var(--card);
@@ -189,7 +193,7 @@ a.button.primary {
 }
 .pill.action {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   border: 0;
   padding: 6px 14px;
 }
@@ -207,7 +211,7 @@ a.button.primary {
 }
 .tag {
   display: inline-block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -275,7 +279,8 @@ a.button.primary {
 .spacer {
   flex: 1;
 }
-.top .secondary {
+.top .secondary,
+.top .pill {
   white-space: nowrap;
 }
 .layout {
@@ -298,7 +303,7 @@ main {
   padding: 20px 12px;
 }
 .side h3 {
-  font-size: 12px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
@@ -352,7 +357,7 @@ main {
 footer {
   text-align: center;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   padding: 18px;
 }
 .card {
@@ -465,7 +470,7 @@ footer {
   display: grid;
   place-items: center;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
 }
 .files .fname {
   flex: 1;
@@ -481,7 +486,7 @@ footer {
 .or {
   text-align: center;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   margin: 12px 0 6px;
 }
 .options {
@@ -494,7 +499,7 @@ footer {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 .options label:first-child {
@@ -533,12 +538,12 @@ footer {
   color: var(--brand);
 }
 .k-payslip {
-  background: #fce7f3 !important;
-  color: #be185d !important;
+  background: var(--ok-bg) !important;
+  color: var(--ok) !important;
 }
 .k-contract {
-  background: #f3e8ff !important;
-  color: #7e22ce !important;
+  background: var(--line) !important;
+  color: var(--ink) !important;
 }
 .sample-title {
   font-weight: 700;
@@ -546,7 +551,7 @@ footer {
 .play {
   margin-top: auto;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--brand);
 }
 
@@ -681,7 +686,7 @@ footer {
 }
 .badge-text {
   fill: #fff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   text-anchor: middle;
 }
@@ -742,7 +747,7 @@ footer {
 }
 .row.info {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 .row.ok {
   background: var(--ok-bg);
@@ -846,7 +851,7 @@ footer {
 }
 .badge-urgency {
   font-weight: 800;
-  font-size: 12px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-radius: 8px;
@@ -905,7 +910,7 @@ footer {
 }
 .tab-badge {
   margin-left: 6px;
-  font-size: 11px;
+  font-size: 12px;
   background: var(--brand-soft);
   color: var(--brand);
   border-radius: 999px;
@@ -958,7 +963,7 @@ footer {
   font-variant-numeric: tabular-nums;
 }
 .stat-label {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
 }
 .summary {
@@ -1092,7 +1097,7 @@ footer {
   font-variant-numeric: tabular-nums;
 }
 .countdown .unit {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 .deadline-main {
@@ -1139,7 +1144,7 @@ details summary {
   gap: 4px;
 }
 .dow {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   text-align: center;
   font-weight: 700;
@@ -1149,7 +1154,7 @@ details summary {
   border: 0;
   border-radius: 8px;
   background: none;
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 .day:disabled {
@@ -1210,7 +1215,7 @@ details summary {
   overflow-y: auto;
 }
 .facts h4 {
-  font-size: 12px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--muted);
@@ -1278,12 +1283,12 @@ mark {
 }
 .mark-search {
   background: #fff59d;
-  color: #1d2433;
+  color: #0f172a;
   border-radius: 3px;
 }
 .mark-focus {
   background: #fcd34d;
-  color: #1d2433;
+  color: #0f172a;
   border-radius: 3px;
   box-shadow: 0 0 0 2px #fcd34d;
   animation: glow 1s ease-out;
@@ -1296,7 +1301,7 @@ mark {
 .ph {
   display: inline-block;
   font: 600 11.5px system-ui, sans-serif;
-  background: #1d2433;
+  background: #0f172a;
   color: #fff;
   border-radius: 5px;
   padding: 0 6px;
@@ -1402,7 +1407,7 @@ mark {
   top: 54px;
   height: 8px;
   border-radius: 4px;
-  background: #9333ea;
+  background: #334155;
   opacity: 0.35;
 }
 .tick {
@@ -1429,11 +1434,11 @@ mark {
   animation: pulse-dot 1.6s infinite;
 }
 .tick.end .tick-dot {
-  background: #9333ea;
+  background: #334155;
 }
 @keyframes pulse-dot {
   50% {
-    box-shadow: 0 0 0 6px rgba(185, 28, 28, 0.2);
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.2);
   }
 }
 .tick.above {
@@ -1483,7 +1488,7 @@ mark {
   border-top-color: var(--warn);
 }
 .clause-kind {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1564,7 +1569,7 @@ mark {
   display: flex;
   gap: 6px;
   align-items: center;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 .switch input {
@@ -1586,14 +1591,14 @@ mark {
   align-items: center;
 }
 .blank-row label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 .field {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   margin-top: 10px;
 }
@@ -1690,7 +1695,7 @@ mark {
   fill: var(--ink);
 }
 .ring-sub {
-  font-size: 11px;
+  font-size: 12px;
   fill: var(--muted);
 }
 .issues ul {
@@ -1760,6 +1765,23 @@ mark {
     flex-direction: row;
     gap: 6px;
     align-items: baseline;
+  }
+}
+@media (max-width: 600px) {
+  .wide-only {
+    display: none;
+  }
+  .top {
+    gap: 6px;
+    padding: 10px 12px;
+  }
+  .brand {
+    font-size: 17px;
+    gap: 8px;
+    padding: 0;
+  }
+  .top .secondary {
+    padding: 8px 12px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
