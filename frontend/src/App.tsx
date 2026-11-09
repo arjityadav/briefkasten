@@ -4,6 +4,7 @@ import { api, followJob } from "./api";
 import { AgentGraph, agentLabel } from "./components/AgentGraph";
 import { Home } from "./components/Home";
 import { LiveLog } from "./components/LiveLog";
+import { Stepper } from "./components/Stepper";
 import { ResultView } from "./components/ResultView";
 import { fmtDate } from "./text";
 import type { Meta, RunSummary, RunView } from "./types";
@@ -201,6 +202,10 @@ function LiveScreen({ live, filter, onFilter, onShowResult }: { live: LiveState;
   const lastSup = [...live.events].reverse().find((e) => e.type === "decided" && e.agent === "supervisor");
   const delegated = lastSup && lastSup.type === "decided" ? lastSup.tools.map((t) => TOOL_AGENT[t]).filter(Boolean) : [];
   const steps = live.events.filter((e) => e.type === "decided").length;
+  // The provider's per-minute token budget: "⏳ pacing: waiting 7s for the per-minute token budget (…)"
+  const pacing = [...live.events].reverse().find((e) => e.type === "info" && e.text.includes("pacing: waiting"));
+  const pacingFor = pacing?.type === "info" ? Number(/waiting (\d+)s/.exec(pacing.text)?.[1] ?? 0) : 0;
+  const waiting = !live.finished && pacing && elapsed < pacing.t + pacingFor;
 
   return (
     <div className="live">
@@ -218,6 +223,14 @@ function LiveScreen({ live, filter, onFilter, onShowResult }: { live: LiveState;
           </p>
         </div>
         <div className="live-stats">
+          {waiting && pacing && (
+            <span className="budget" key={pacing.t} title="The model provider allows a fixed number of tokens per minute; the run waits instead of being rejected.">
+              Waiting for token budget
+              <span className="budget-bar" aria-hidden="true">
+                <i style={{ animationDuration: `${pacingFor}s` }} />
+              </span>
+            </span>
+          )}
           <span>
             <strong>{steps}</strong> steps
           </span>
@@ -231,6 +244,7 @@ function LiveScreen({ live, filter, onFilter, onShowResult }: { live: LiveState;
           )}
         </div>
       </div>
+      <Stepper live={live} />
       <div className="live-grid">
         <AgentGraph live={live} selected={filter} onSelect={onFilter} />
         <LiveLog live={live} filter={filter} onFilter={onFilter} />

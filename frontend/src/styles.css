@@ -18,6 +18,8 @@
   --info: #0369a1;
   --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(15, 23, 42, 0.05);
   --radius: 12px;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1); /* entering, checking off */
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1); /* moving across the screen */
   --font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
@@ -600,6 +602,28 @@ footer {
   stroke-opacity: 1;
   stroke-dasharray: 7 6;
   animation: flow 0.6s linear infinite;
+}
+/* hand-off: a dot carries work from the supervisor to a specialist and the result back */
+.packet {
+  fill: currentColor;
+  stroke: var(--card);
+  stroke-width: 2;
+  opacity: 0;
+  animation: travel 550ms var(--ease-in-out) forwards;
+}
+@keyframes travel {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  15%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), var(--dy));
+    opacity: 0;
+  }
 }
 @keyframes flow {
   to {
@@ -1782,6 +1806,138 @@ mark {
   }
   .top .secondary {
     padding: 8px 12px;
+  }
+}
+/* ------------------------------------------------------------------ progress */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.stepper {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+  transition: color 200ms ease;
+}
+.stage .mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  display: grid;
+  place-items: center;
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+.stage .mark svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: var(--card);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+  transform: scale(0.9);
+  transition:
+    opacity 200ms var(--ease-out),
+    transform 200ms var(--ease-out);
+}
+.stage.current {
+  color: var(--ink);
+  font-weight: 700;
+}
+.stage.current .mark {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+.stage.done {
+  color: var(--ink);
+}
+.stage.done .mark {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.stage.done .mark svg {
+  opacity: 1;
+  transform: scale(1);
+}
+.stage.skipped {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.budget {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--warn);
+  background: var(--warn-bg);
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+.budget-bar {
+  width: 64px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.budget-bar i {
+  display: block;
+  height: 100%;
+  background: var(--warn);
+  transform-origin: left;
+  animation: drain linear forwards; /* duration = the wait the provider asked for */
+}
+@keyframes drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+.tokbar {
+  display: inline-block;
+  width: 48px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+  align-self: center;
+}
+.tokbar i {
+  display: block;
+  height: 100%;
+  background: var(--muted);
+  transform-origin: left;
+  transition: transform 300ms var(--ease-out); /* rescales when a bigger call arrives */
+}
+@media (prefers-reduced-motion: reduce) {
+  .packet {
+    display: none; /* the lit edge and the log already say who has the work */
   }
 }
 @media (prefers-reduced-motion: reduce) {

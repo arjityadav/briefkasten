@@ -14,6 +14,7 @@ export function LiveLog({ live, filter, onFilter }: Props) {
   const [stick, setStick] = useState(true); // follow new events unless the user scrolled up
 
   const rows = live.events.filter((e) => e.type !== "started" && (!filter || ("agent" in e && e.agent === filter)));
+  const maxTokens = Math.max(1, ...live.events.map((e) => (e.type === "decided" ? e.tokens : 0)));
   const thinking = Object.entries(live.nodes)
     .filter(([id, n]) => n.status === "thinking" && (!filter || id === filter))
     .map(([id]) => id);
@@ -44,7 +45,7 @@ export function LiveLog({ live, filter, onFilter }: Props) {
         aria-live="polite"
       >
         {rows.map((e, i) => (
-          <Row key={i} e={e} onFilter={onFilter} />
+          <Row key={i} e={e} onFilter={onFilter} maxTokens={maxTokens} />
         ))}
         {thinking.map((id) => (
           <div className="row thinking" key={`t-${id}`}>
@@ -71,7 +72,7 @@ function AgentChip({ id, onFilter }: { id: string; onFilter: (a: string | null) 
   );
 }
 
-function Row({ e, onFilter }: { e: JobEvent; onFilter: (a: string | null) => void }) {
+function Row({ e, onFilter, maxTokens }: { e: JobEvent; onFilter: (a: string | null) => void; maxTokens: number }) {
   const [open, setOpen] = useState(false);
   const time = <span className="t">{e.t.toFixed(1)}s</span>;
   switch (e.type) {
@@ -95,6 +96,12 @@ function Row({ e, onFilter }: { e: JobEvent; onFilter: (a: string | null) => voi
               <span className="muted small">
                 {(e.duration_ms / 1000).toFixed(1)}s · {e.tokens.toLocaleString()} tok
               </span>
+              {e.tokens > 0 && (
+                // this call's tokens relative to the largest call so far: shows where the budget goes
+                <span className="tokbar" aria-hidden="true">
+                  <i style={{ transform: `scaleX(${e.tokens / maxTokens})` }} />
+                </span>
+              )}
             </div>
             {e.thought && (
               <p className={`thought ${long && !open ? "clamp" : ""}`} onClick={() => long && setOpen(!open)} title={long ? "click to expand" : undefined}>

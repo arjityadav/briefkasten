@@ -64,22 +64,31 @@ export interface NodeState {
   thought?: string | null;
 }
 
+/** Work passing between the supervisor and a specialist: drawn as a dot travelling along the edge. */
+export interface Handoff {
+  id: number;
+  from: string;
+  to: string;
+}
+
 export interface LiveState {
   events: JobEvent[];
   nodes: Record<string, NodeState>;
   active: string[]; // specialists currently working on a supervisor request (edges light up)
+  handoffs: Handoff[]; // the most recent ones only
   run?: RunView;
   error?: string;
   finished: boolean;
 }
 
-export const emptyLive = (): LiveState => ({ events: [], nodes: {}, active: [], finished: false });
+export const emptyLive = (): LiveState => ({ events: [], nodes: {}, active: [], handoffs: [], finished: false });
 
 const node = (s: LiveState, id: string): NodeState => s.nodes[id] ?? { status: "idle", steps: 0, tokens: 0, problems: 0 };
 
 export function reduceLive(prev: LiveState, e: JobEvent): LiveState {
   const s: LiveState = { ...prev, events: [...prev.events, e], nodes: { ...prev.nodes }, active: [...prev.active] };
   const set = (id: string, patch: Partial<NodeState>) => (s.nodes[id] = { ...node(s, id), ...patch });
+  const handoff = (from: string, to: string) => (s.handoffs = [...s.handoffs, { id: s.events.length * 16 + s.handoffs.length, from, to }].slice(-8));
 
   switch (e.type) {
     case "started":
@@ -99,6 +108,7 @@ export function reduceLive(prev: LiveState, e: JobEvent): LiveState {
         for (const tool of e.tools) {
           const target = TOOL_AGENT[tool];
           if (!target) continue;
+          handoff("supervisor", target);
           if (ALL_AGENTS[target].kind === "code") {
             const c = node(s, target);
             set(target, { status: "done", steps: c.steps + 1 });
@@ -107,6 +117,7 @@ export function reduceLive(prev: LiveState, e: JobEvent): LiveState {
           }
         }
       } else if (submitted) {
+        if (s.active.includes(e.agent)) handoff(e.agent, "supervisor");
         s.active = s.active.filter((a) => a !== e.agent);
       }
       break;

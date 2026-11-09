@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { ALL_AGENTS, INTAKE, SPECIALISTS, SUPERVISOR, type AgentInfo, type LiveState, type NodeState } from "../agents";
 
 const W = 780;
@@ -48,6 +49,20 @@ export function AgentGraph({ live, selected, onSelect }: Props) {
         <Node key={agent.id} agent={agent} x={x} y={y} state={nodeOf(live, agent.id)} selected={selected === agent.id} onSelect={onSelect} labelAbove={y < CY - 40} />
       ))}
       <Node agent={SUPERVISOR} x={CX} y={CY} state={nodeOf(live, "supervisor")} selected={selected === "supervisor"} onSelect={onSelect} big />
+
+      {/* hand-offs: a dot travels from the supervisor to a specialist (task) and back (result) */}
+      {!live.finished && live.handoffs.map((h) => {
+        const at = (id: string) => (id === "supervisor" ? { x: CX, y: CY } : ring.find((n) => n.agent.id === id));
+        const from = at(h.from);
+        const to = at(h.to);
+        if (!from || !to) return null;
+        const color = ALL_AGENTS[h.from === "supervisor" ? h.to : h.from]?.color;
+        return (
+          <g key={h.id} transform={`translate(${from.x},${from.y})`} aria-hidden="true">
+            <circle className="packet" r={6} style={{ color, "--dx": `${to.x - from.x}px`, "--dy": `${to.y - from.y}px` } as CSSProperties} />
+          </g>
+        );
+      })}
     </svg>
   );
 }
