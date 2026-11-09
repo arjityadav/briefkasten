@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import ssl
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -28,12 +30,92 @@ def _ssl_context() -> ssl.SSLContext:
 
 
 RATE_LIMIT_RETRIES = 8  # 429s are safe to wait out; per-minute token limits clear within a minute or two
+MIN_OUTPUT_TOKENS = 256
+
+
+class TokenPacer:
+    """Keeps requests inside the provider's per-minute token budget instead of running into 429s.
+
+    Driven by the rate-limit headers the provider sends with every response (Groq, OpenAI):
+    nothing to configure, and providers without them are never paced. Shared by the threads of
+    parallel agents, so their requests queue up for the budget together.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.limit: int | None = None
+        self._remaining = 0
+        self._reset_at = 0.0
+
+    def fit(self, payload: dict, body_chars: int) -> int:
+        """Lower `max_tokens` so one request never exceeds the per-minute limit; return the request's cost."""
+        prompt = int(body_chars / 3.5)  # rough token count of the request body, on the safe side
+        if self.limit and "max_tokens" in payload:
+            room = self.limit - prompt - 200
+            if room < MIN_OUTPUT_TOKENS:
+                raise LLMError(
+                    f"Request of about {prompt} tokens doesn't fit the provider's limit of {self.limit} tokens per minute."
+                )
+            payload["max_tokens"] = min(payload["max_tokens"], room)
+        return prompt + payload.get("max_tokens", 0)
+
+    def wait(self, cost: int) -> None:
+        if not self.limit:
+            return
+        with self._lock:  # held while sleeping, so parallel requests take turns
+            now = time.monotonic()
+            if now >= self._reset_at:
+                self._remaining = self.limit
+            elif cost > self._remaining:
+                # The budget refills continuously (limit per 60 s): wait only for the missing part.
+                delay = min(self._reset_at - now, (cost - self._remaining) * 60 / self.limit)
+                log.warning("pacing: waiting %.0fs for the per-minute token budget (%d tokens free, about %d needed)", delay, max(self._remaining, 0), cost)
+                time.sleep(delay)
+                self._remaining = self.limit
+            self._remaining -= cost
+
+    def update(self, headers) -> None:
+        if headers is None:
+            return
+        limit, remaining = headers.get("x-ratelimit-limit-tokens"), headers.get("x-ratelimit-remaining-tokens")
+        reset = _duration(headers.get("x-ratelimit-reset-tokens"))
+        if not (limit and remaining and reset is not None):
+            return
+        with self._lock:
+            self.limit, self._remaining = int(limit), int(remaining)
+            self._reset_at = time.monotonic() + reset
+
+
+_pacers: dict[str, TokenPacer] = {}
+
+
+def pacer(url: str) -> TokenPacer:
+    host = url.split("/")[2] if "//" in url else url
+    return _pacers.setdefault(host, TokenPacer())
+
+
+def _duration(value: str | None) -> float | None:
+    """Parse rate-limit durations like '7.66s', '134ms' or '1m26.4s'."""
+    if not value:
+        return None
+    parts = re.findall(r"([\d.]+)(ms|h|m|s)", value)
+    if not parts:
+        return None
+    unit = {"ms": 0.001, "s": 1, "m": 60, "h": 3600}
+    return sum(float(n) * unit[u] for n, u in parts)
 
 
 def post_json(url: str, payload: dict, headers: dict[str, str], *, timeout: int = 180, retries: int = 3) -> dict:
+    budget = pacer(url)
+    payload = dict(payload)
+    # Inline images (base64) are billed by size in pixels, not characters: count each as a flat 1,500.
+    text = json.dumps(payload)
+    images = len(re.findall(r'"data:[^"]*"', text))
+    cost = budget.fit(payload, len(re.sub(r'"data:[^"]*"', '""', text)) + images * 1500 * 3.5)
     body = json.dumps(payload).encode("utf-8")
     attempt = rate_limited = 0
     while True:
+        budget.wait(cost)
         req = urllib.request.Request(
             url,
             data=body,
@@ -43,8 +125,10 @@ def post_json(url: str, payload: dict, headers: dict[str, str], *, timeout: int 
         )
         try:
             with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
+                budget.update(getattr(resp, "headers", None))
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
+            budget.update(e.headers)
             detail = e.read().decode("utf-8", errors="replace")[:2000]
             if e.code == 429 and _daily_quota(detail):
                 # Waiting a minute can't help with a per-day quota: stop now and say so.

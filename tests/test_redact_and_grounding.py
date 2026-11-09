@@ -151,3 +151,31 @@ def test_models_never_see_unlisted_family_names(tmp_path):
     Briefkasten(router, Settings(data_dir=tmp_path)).process(FAMILY_LETTER, today=date(2026, 10, 28))
     prompts = " ".join(c["system"] + c["prompt"] for c in router.smart.calls)
     assert prompts and not any(s in prompts for s in ("Jonas", "Lina", "Erika", "Musterfrau", "Lindenweg", "14.02.1988"))
+
+import pytest
+
+
+def test_presidio_finds_names_in_running_prose():
+    pytest.importorskip("presidio_analyzer")
+    from briefkasten.tools.ner import presidio_names
+    from briefkasten.tools.redact import Redactor
+
+    text = "Sehr geehrte Damen und Herren,\nwie mit Jonas Becker besprochen, zahlt das Finanzamt Musterstadt 412,00 €."
+    plain = Redactor(auto=True).redact(text).text
+    assert "Jonas Becker" in plain  # the rules alone miss it
+    masked = Redactor(auto=True, ner=presidio_names).redact(text).text
+    assert "Jonas Becker" not in masked and "[NAME_" in masked
+    assert "Finanzamt Musterstadt" in masked and "412,00" in masked  # organisations and amounts stay
+
+
+def test_default_engine_does_not_need_presidio():
+    from briefkasten.config import Settings
+
+    assert Settings().redact_engine == "rules"
+
+
+def test_presidio_leaves_form_blanks_alone():
+    pytest.importorskip("presidio_analyzer")
+    from briefkasten.tools.ner import presidio_names
+
+    assert presidio_names("Familienname: ____________\nVorname: ______________________________") == []

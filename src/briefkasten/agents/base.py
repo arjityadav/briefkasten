@@ -139,12 +139,33 @@ def _validation_message(e: ValidationError) -> str:
     return "; ".join(f"{'.'.join(map(str, x['loc'])) or 'input'}: {x['msg']}" for x in e.errors()[:5])
 
 
+TRIMMED = " … [shortened to save tokens; call the tool again if you need it in full]"
+
+
+def _trim_history(messages: list[Message], budget_tokens: int, keep: int = 300) -> None:
+    """Shorten tool results except the latest ones, oldest first, until the conversation fits the budget.
+
+    The prompt (the letter) and the agent's own turns stay intact: tool results (searches, sub-agent
+    reports) are what make a conversation grow, and the agent already acted on the old ones.
+    """
+    def size() -> int:
+        return int(sum(len(m.text or "") + sum(len(r.content) for r in m.results or []) + sum(len(str(c.input)) for c in m.tool_calls or []) for m in messages) / 3.5)
+
+    older = [r for m in messages[:-1] if m.role == "tool" for r in m.results]
+    for r in older:
+        if size() <= budget_tokens:
+            return
+        if len(r.content) > keep + len(TRIMMED):
+            r.content = r.content[:keep] + TRIMMED
+
+
 class Agent:
     name: str = "agent"
     tier: Tier = "smart"
     max_tokens: int = 2048
     max_steps: int = 6
     max_rejected_calls: int = 4  # tool calls the provider refuses (e.g. a misspelt tool name) don't use up steps
+    history_tokens: int = 3500  # beyond this, older tool results are shortened (per-minute token limits)
 
     def __init__(self, router: LLMRouter):
         self.router = router
@@ -204,6 +225,7 @@ class Agent:
         while worked < self.max_steps:
             step += 1
             _report(trace, "started", self.name, step)
+            _trim_history(messages, self.history_tokens)
             t0 = time.perf_counter()
             with observer().observe(
                 f"{self.name} step {step}",

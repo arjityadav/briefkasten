@@ -34,7 +34,7 @@ class DraftCheckParams(BaseModel):
 class DrafterAgent(Agent):
     name = "drafter"
     tier = "smart"
-    max_tokens = 2000
+    max_tokens = 1500
     max_steps = 8  # it searches the letter and checks its draft before submitting
 
     def run(

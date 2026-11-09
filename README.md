@@ -176,14 +176,15 @@ to stderr, so `--json` output stays clean; `-q` hides it.
  0:01    extractor   → submit  1.2s · 831→122 tok
  0:01    extractor   ✗ submit: Rejected. Fix these problems and call submit again: - amounts[0]: amount 283.47 …
  0:02    extractor   → find_in_letter  0.4s · 876→31 tok
- 0:09  ⏳ rate limited, retrying in 7s (attempt 2 of 4)
+ 0:09  ⏳ pacing: waiting 7s for the per-minute token budget (1210 tokens free, about 3900 needed)
 ```
 
 Providers (`BRIEFKASTEN_PROVIDER`):
 
 | Provider | Smart / fast / vision defaults | Notes |
 |---|---|---|
-| `groq` (default in `.env.template`) | `qwen/qwen3.8-27b` for all three | Key from console.groq.com. Qwen makes parallel tool calls and reads images. gpt-oss is not recommended here: on Groq it can't call tools in parallel and often calls a non-existent `json` tool, which stalls the agents. Rejected tool calls are fed back to the agent; 429s wait out the token-per-minute limit (free-tier runs take several minutes) |
+| `groq` (default in `.env.template`) | `qwen/qwen3.8-27b` for all three | Key from console.groq.com. Qwen makes parallel tool calls and reads images. gpt-oss is not recommended here: on Groq it can't call tools in parallel and often calls a non-existent `json` tool, which stalls the agents. Rejected tool calls are fed back to the agent. Requests are paced to the token-per-minute limit Groq reports in its rate-limit headers (8,000 on the free tier), each request's output is capped to fit it, and older tool results are shortened as conversations grow (free-tier runs take several minutes) |
+| `nvidia` | `mistralai/mistral-large-4-1t-a52b` for all three | Key from build.nvidia.com in `NVIDIA_API_KEY` (or `NVIDIA_KEY`), model override in `NVIDIA_MODEL`; independent of the `OPENAI_*` variables. Limited by requests per minute rather than tokens, so runs are faster than on Groq's free tier. Mistral Large 4 made parallel tool calls in a probe; the GLM, DeepSeek and MiniMax flash models there timed out. It doesn't read images, so keep `BRIEFKASTEN_IMAGE_READER=ocr` |
 | `anthropic` | `claude-sonnet-5-5` / `claude-haiku-5-5` / smart model | |
 | `openai` | `llama3.1` | Any OpenAI-compatible server, Ollama by default |
 

@@ -24,7 +24,7 @@ Rules:
 class ExplainerAgent(Agent):
     name = "explainer"
     tier = "smart"
-    max_tokens = 1500
+    max_tokens = 1200
 
     def run(self, letter: str, triage: Triage, trace: list[TraceEvent], feedback: list[str] | None = None) -> Explanation:
         prompt = (

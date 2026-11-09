@@ -27,6 +27,9 @@ DEFAULT_MODELS: dict[str, tuple[str, str, str | None]] = {
     # Qwen for every role: parallel tool calls, reliable tool-call format, and vision. gpt-oss on Groq can't make
     # parallel tool calls and often calls a non-existent "json" tool, which stalls the agent loops.
     "groq": ("qwen/qwen3.8-27b", "qwen/qwen3.8-27b", "qwen/qwen3.8-27b"),
+    # NVIDIA's hosted API (build.nvidia.com): Mistral Large 4 made parallel tool calls reliably in a probe;
+    # GLM, DeepSeek and MiniMax flash models timed out there. It doesn't read images: scans use local OCR.
+    "nvidia": ("mistralai/mistral-large-4-1t-a52b", "mistralai/mistral-large-4-1t-a52b", None),
     "openai": ("llama3.1", "llama3.1", None),
 }
 
@@ -48,7 +51,7 @@ def _split_terms(value: str) -> list[str]:
 
 @dataclass
 class Settings:
-    provider: str = "anthropic"  # anthropic | groq | openai
+    provider: str = "anthropic"  # anthropic | groq | nvidia | openai
     model: str = "claude-sonnet-5-5"  # used by reasoning-heavy agents
     model_fast: str = "claude-haiku-5-5"  # used by triage and the critic
     model_vision: str | None = None  # cloud model for scans and photos (image_reader=cloud); None means `model`
@@ -57,12 +60,14 @@ class Settings:
     model_vision_local: str = "qwen2.5vl:7b"
     anthropic_api_key: str | None = None
     groq_api_key: str | None = None
+    nvidia_api_key: str | None = None
     openai_base_url: str = "http://localhost:11434/v1"  # Ollama by default
     openai_api_key: str | None = None
     state: str = "BW"  # Bundesland, decides which public holidays apply
     data_dir: Path = Path(".briefkasten")
     redact_terms: list[str] = field(default_factory=list)
     auto_redact: bool = True  # also detect unlisted names, street addresses and birthdates
+    redact_engine: str = "rules"  # rules | rules+presidio (local NER for names in running prose)
     sender_name: str = ""
     sender_address: str = ""
     max_extraction_retries: int = 1
@@ -80,7 +85,8 @@ class Settings:
             # Groq configured through the generic OPENAI_* variables: use the Groq provider and its tuning.
             provider, groq_key = "groq", groq_key or env.get("OPENAI_API_KEY")
         default_model, default_fast, default_vision = DEFAULT_MODELS.get(provider, DEFAULT_MODELS["openai"])
-        model = env.get("BRIEFKASTEN_MODEL") or env.get("OPENAI_MODEL")
+        # NVIDIA has its own credentials, so the OPENAI_* variables (e.g. set up for Groq) don't leak into it.
+        model = env.get("BRIEFKASTEN_MODEL") or env.get("NVIDIA_MODEL" if provider == "nvidia" else "OPENAI_MODEL")
         # Without an explicit fast model, Groq keeps its small model; elsewhere the chosen model does both jobs.
         fast_fallback = default_fast if provider == "groq" else (model or default_fast)
         s = cls(
@@ -90,11 +96,13 @@ class Settings:
             model_vision=env.get("BRIEFKASTEN_MODEL_VISION", default_vision),
             anthropic_api_key=env.get("ANTHROPIC_API_KEY"),
             groq_api_key=groq_key,
+            nvidia_api_key=env.get("NVIDIA_API_KEY") or env.get("NVIDIA_KEY"),
             openai_base_url=env.get("OPENAI_BASE_URL", "http://localhost:11434/v1"),
             openai_api_key=env.get("OPENAI_API_KEY"),
             state=env.get("BRIEFKASTEN_STATE", "BW").upper(),
             data_dir=Path(env.get("BRIEFKASTEN_DATA_DIR", ".briefkasten")),
             redact_terms=_split_terms(env.get("BRIEFKASTEN_REDACT_TERMS", "")),
+            redact_engine=env.get("BRIEFKASTEN_REDACT_ENGINE", "rules").strip().lower(),
             auto_redact=env.get("BRIEFKASTEN_AUTO_REDACT", "1").strip().lower() not in ("0", "false", "no", "off"),
             sender_name=env.get("BRIEFKASTEN_SENDER_NAME", ""),
             sender_address=env.get("BRIEFKASTEN_SENDER_ADDRESS", "").replace("\\n", "\n"),

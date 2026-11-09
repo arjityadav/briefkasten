@@ -66,7 +66,7 @@ class ExtractionRun:
 class ExtractorAgent(Agent):
     name = "extractor"
     tier = "smart"
-    max_tokens = 2500
+    max_tokens = 1600
     max_steps = 8
 
     def run(

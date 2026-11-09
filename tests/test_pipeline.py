@@ -462,3 +462,29 @@ def test_endless_rejected_calls_still_end(settings):
 
     state, _ = run_with(settings, "finanzamt_bescheid", llm_cls=Broken)
     assert state.status == "failed" and "rejected" in state.error
+
+
+def test_long_conversations_shorten_old_tool_results():
+    from briefkasten.agents.base import TRIMMED, _trim_history
+    from briefkasten.llm import Message, ToolCall, ToolResult
+
+    letter = "Brief " * 2000
+    messages = [Message("user", text=letter)]
+    for i in range(4):
+        messages.append(Message("assistant", text="", tool_calls=[ToolCall(f"c{i}", "find_in_letter", {"q": i})]))
+        messages.append(Message("tool", results=[ToolResult(f"c{i}", f"result {i} " + "x" * 6000)]))
+
+    _trim_history(messages, budget_tokens=6000)
+    results = [m.results[0].content for m in messages if m.role == "tool"]
+    assert messages[0].text == letter  # the letter itself is never shortened
+    assert results[-1].endswith("x") and not results[-1].endswith(TRIMMED)  # the latest result stays whole
+    assert results[0].endswith(TRIMMED)  # the oldest goes first
+
+
+def test_short_conversations_are_left_alone():
+    from briefkasten.agents.base import _trim_history
+    from briefkasten.llm import Message, ToolResult
+
+    messages = [Message("user", text="Brief"), Message("tool", results=[ToolResult("c", "y" * 2000)])]
+    _trim_history(messages, budget_tokens=3500)
+    assert messages[1].results[0].content == "y" * 2000

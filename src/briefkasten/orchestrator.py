@@ -126,7 +126,11 @@ class Briefkasten:
             raise ValueError("The letter is empty")
 
         now = datetime.now()
-        redacted = Redactor(self.settings.redact_terms, auto=self.settings.auto_redact).redact(text)
+        ner = None
+        if self.settings.redact_engine == "rules+presidio":
+            from .tools.ner import presidio_names
+            ner = presidio_names
+        redacted = Redactor(self.settings.redact_terms, auto=self.settings.auto_redact, ner=ner).redact(text)
         state = RunState(
             run_id=new_run_id(now),
             created_at=now,

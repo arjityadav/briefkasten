@@ -15,6 +15,7 @@ Three layers, in order:
 from __future__ import annotations
 
 import re
+from typing import Callable
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
@@ -138,10 +139,11 @@ def detect_people(text: str) -> tuple[list[str], list[str], list[str]]:
 
 
 class Redactor:
-    def __init__(self, terms: list[str] | None = None, auto: bool = True):
+    def __init__(self, terms: list[str] | None = None, auto: bool = True, ner: Callable[[str], list[str]] | None = None):
         # Longest first, so "Max Mustermann" wins over "Mustermann".
         self.terms = sorted({t for t in (terms or []) if len(t) >= 3}, key=len, reverse=True)
         self.auto = auto  # detect unlisted names, street addresses and birthdates
+        self.ner = ner  # optional model-based name finder (tools/ner.py), adds to the rules
 
     def redact(self, text: str) -> Redaction:
         mapping: dict[str, str] = {}
@@ -167,6 +169,8 @@ class Redactor:
 
         if self.auto:
             names, streets, births = detect_people(text)
+            if self.ner:
+                names = list(dict.fromkeys([*names, *self.ner(text)]))
             for b in births:
                 text = re.sub(rf"(?<!\d){re.escape(b)}(?!\d)", lambda m: placeholder("BIRTHDATE", m.group(0)), text)
             for st in streets:

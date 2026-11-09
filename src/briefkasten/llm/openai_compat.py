@@ -14,6 +14,7 @@ from .base import ChatResult, Image, LLMError, LLMResult, Message, ToolCall, Too
 from .http import post_json
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 
 def groq_options(model: str) -> dict:

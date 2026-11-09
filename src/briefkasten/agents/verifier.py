@@ -194,7 +194,7 @@ def check_analysis(analysis: DocumentAnalysis, letter: str) -> tuple[list[Issue]
 class CriticAgent(Agent):
     name = "critic"
     tier = "fast"
-    max_tokens = 800
+    max_tokens = 500
     max_steps = 5
 
     def run(self, letter: str, explanation: Explanation, trace: list[TraceEvent]) -> list[Issue]:

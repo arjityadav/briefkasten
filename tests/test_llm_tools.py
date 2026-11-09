@@ -240,3 +240,117 @@ def test_daily_quota_fails_fast_instead_of_waiting(monkeypatch):
     with pytest.raises(LLMError, match="Daily token quota.*tokens per day"):
         http.post_json("https://x", {}, {})
     assert calls["n"] == 1 and not sleeps
+
+
+def _groq_headers(remaining: int, reset: str = "30s", limit: int = 8000) -> dict:
+    return {"x-ratelimit-limit-tokens": str(limit), "x-ratelimit-remaining-tokens": str(remaining), "x-ratelimit-reset-tokens": reset}
+
+
+def _fake_response(headers: dict):
+    import io
+
+    class Resp(io.BytesIO):
+        def __init__(self):
+            super().__init__(b'{"ok": true}')
+            self.headers = headers
+
+    return Resp()
+
+
+def test_rate_limit_durations_parse():
+    from briefkasten.llm.http import _duration
+
+    assert _duration("134ms") == 0.134
+    assert _duration("7.66s") == 7.66
+    assert abs(_duration("1m26.4s") - 86.4) < 1e-9
+    assert _duration(None) is None and _duration("soon") is None
+
+
+def test_requests_wait_for_the_per_minute_token_budget(monkeypatch, caplog):
+    from briefkasten.llm import http
+
+    monkeypatch.setitem(http._pacers, "paced.example", http.TokenPacer())
+    sleeps: list[float] = []
+    monkeypatch.setattr(http.time, "sleep", sleeps.append)
+    monkeypatch.setattr(http.urllib.request, "urlopen", lambda req, timeout, context: _fake_response(_groq_headers(300)))
+    monkeypatch.setattr(http.log, "propagate", True)
+
+    http.post_json("https://paced.example/v1", {"max_tokens": 100}, {})  # learns: 300 tokens left for 30 s
+    assert not sleeps
+    with caplog.at_level("WARNING", logger="briefkasten.http"):
+        http.post_json("https://paced.example/v1", {"max_tokens": 1000}, {})  # doesn't fit: waits for the reset
+    assert len(sleeps) == 1 and 5 < sleeps[0] < 6  # about 700 tokens missing, refilled at 8,000 a minute
+    assert "pacing: waiting" in caplog.text
+
+
+def test_providers_without_rate_limit_headers_are_never_paced(monkeypatch):
+    from briefkasten.llm import http
+
+    monkeypatch.setitem(http._pacers, "local.example", http.TokenPacer())
+    sleeps: list[float] = []
+    monkeypatch.setattr(http.time, "sleep", sleeps.append)
+    monkeypatch.setattr(http.urllib.request, "urlopen", lambda req, timeout, context: _fake_response({}))
+    for _ in range(3):
+        http.post_json("https://local.example/v1", {"max_tokens": 50_000}, {})
+    assert not sleeps
+
+
+def test_output_is_capped_so_one_request_fits_the_limit():
+    import pytest
+
+    from briefkasten.llm import LLMError
+    from briefkasten.llm.http import TokenPacer
+
+    p = TokenPacer()
+    p.update(_groq_headers(8000))
+    payload = {"max_tokens": 4000, "messages": "x" * 14_000}  # about 4,000 prompt tokens
+    p.fit(payload, len(str(payload)))
+    assert payload["max_tokens"] < 4000 and 4000 + payload["max_tokens"] <= 8000
+    with pytest.raises(LLMError, match="doesn't fit"):
+        p.fit({"max_tokens": 500}, 30_000)
+
+
+def test_inline_images_do_not_count_as_text(monkeypatch):
+    from briefkasten.llm import http
+
+    monkeypatch.setitem(http._pacers, "vision.example", http.TokenPacer())
+    http._pacers["vision.example"].update(_groq_headers(8000))
+    sent = {}
+
+    def fake_urlopen(req, timeout, context):
+        sent["body"] = req.data
+        return _fake_response({})
+
+    monkeypatch.setattr(http.urllib.request, "urlopen", fake_urlopen)
+    image = "data:image/png;base64," + "A" * 200_000  # far more than 8,000 tokens as text
+    http.post_json("https://vision.example/v1", {"max_tokens": 2000, "messages": [{"url": image}]}, {})
+    assert b'"max_tokens": 2000' in sent["body"]
+
+
+def test_nvidia_has_its_own_credentials(monkeypatch):
+    from briefkasten.config import Settings
+    from briefkasten.llm import build_router
+
+    monkeypatch.setattr("briefkasten.config.load_dotenv", lambda: None)
+    for k in ("BRIEFKASTEN_MODEL", "BRIEFKASTEN_MODEL_FAST", "NVIDIA_MODEL", "NVIDIA_API_KEY", "GROQ_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("BRIEFKASTEN_PROVIDER", "nvidia")
+    monkeypatch.setenv("NVIDIA_KEY", "nvapi-test")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.groq.com/openai/v1")  # set up for Groq: must not leak in
+    monkeypatch.setenv("OPENAI_MODEL", "qwen/qwen3.8-27b")
+    s = Settings.from_env()
+    assert s.provider == "nvidia" and s.nvidia_api_key == "nvapi-test"
+    assert s.model == s.model_fast == "mistralai/mistral-large-4-1t-a52b"
+    smart = build_router(s).for_tier("smart")
+    assert smart._url == "https://integrate.api.nvidia.com/v1/chat/completions" and smart._key == "nvapi-test"
+
+
+def test_pacing_waits_only_for_the_missing_tokens(monkeypatch):
+    from briefkasten.llm import http
+
+    p = http.TokenPacer()
+    p.update(_groq_headers(1000, reset="50s"))  # 8,000 per minute refill at about 133 a second
+    sleeps: list[float] = []
+    monkeypatch.setattr(http.time, "sleep", sleeps.append)
+    p.wait(2000)
+    assert 7 < sleeps[0] < 8  # 1,000 missing tokens, not the full 50 s

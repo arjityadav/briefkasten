@@ -57,8 +57,17 @@ def build_router(settings: Settings) -> LLMRouter:
         def make(model: str) -> OpenAICompatLLM:
             return OpenAICompatLLM(model, GROQ_BASE_URL, settings.groq_api_key, **groq_options(model))
 
+    elif settings.provider == "nvidia":
+        from .openai_compat import NVIDIA_BASE_URL, OpenAICompatLLM
+
+        if not settings.nvidia_api_key:
+            raise LLMError("NVIDIA_API_KEY is not set (create one at https://build.nvidia.com)")
+
+        def make(model: str) -> OpenAICompatLLM:
+            return OpenAICompatLLM(model, NVIDIA_BASE_URL, settings.nvidia_api_key)
+
     else:
-        raise LLMError(f"Unknown provider '{settings.provider}' (use 'anthropic', 'groq' or 'openai')")
+        raise LLMError(f"Unknown provider '{settings.provider}' (use 'anthropic', 'groq', 'nvidia' or 'openai')")
     return LLMRouter(
         smart=make(settings.model),
         fast=make(settings.model_fast),
