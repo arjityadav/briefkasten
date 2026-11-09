@@ -23,6 +23,8 @@ function useTheme(): [Theme, () => void] {
   });
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    // the phone's status bar follows the header colour (--paper), whichever theme was picked
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", theme === "dark" ? "#111a2e" : "#ffffff"));
     try {
       localStorage.setItem("bk-theme", theme);
     } catch {
