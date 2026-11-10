@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"] # oldest supported (pyproject) and the Docker image's version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      # --locked: fail if uv.lock is out of date instead of resolving new versions in CI
+      - run: uv sync --locked --extra dev --extra web --extra observability
+      # No model keys are needed: tests use recorded replays and fake HTTP; tracing is off (tests/conftest.py)
+      - run: uv run pytest -q
+
+  frontend:
+    name: Web UI (typecheck + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # same as the Dockerfile
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build # tsc --noEmit, then vite build
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t briefkasten:ci .
+      # The image defaults to demo-only mode: it must start and serve the API without any keys
+      - run: |
+          docker run -d --name bk -p 127.0.0.1:8000:8000 briefkasten:ci
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/api/meta && break; sleep 1; done
+          curl -sf http://127.0.0.1:8000/api/meta | grep -q '"demo_only":true'
