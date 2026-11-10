@@ -204,3 +204,16 @@ def test_real_langfuse_sdk_exports_the_nested_trace(tmp_path):
     assert "99/815/08154" not in attrs and "DE12 6005" not in attrs
     assert scores["checks_passed"] == 1.0 and scores["agent_steps"] == len(state.trace)
     assert state.trace_url == f"http://langfuse.local/trace/{state.trace_id}"
+
+
+def test_file_names_stay_out_of_the_trace_name(tmp_path, rec, monkeypatch):
+    from test_documents import _fake_tesseract, _png
+
+    monkeypatch.setattr("shutil.which", lambda _: _fake_tesseract(tmp_path))
+    letter, intent, router = load_replay("finanzamt_bescheid")
+    bk = Briefkasten(router, Settings(data_dir=tmp_path / "d", redact_terms=DEMO_REDACT_TERMS))
+    state = bk.process_files([(_png(1), "Bescheid_Max_Mustermann_99-815-08154.png")], today=TODAY)
+    (root,) = rec.roots
+    assert root.fields["trace_name"] == "1 document"
+    assert "Mustermann" not in repr([(n.name, n.fields) for n in root.walk()])
+    assert state.source_name.startswith("Bescheid_")  # still shown to the user locally

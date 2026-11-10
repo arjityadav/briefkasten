@@ -27,7 +27,8 @@
         "responseMode": "onReceived",
         "options": {
           "binaryPropertyName": "attachment_"
-        }
+        },
+        "authentication": "headerAuth"
       },
       "id": "112bb15e-ed17-5f1c-b967-be959e7ee955",
       "name": "Upload (webhook)",
@@ -38,7 +39,13 @@
         220
       ],
       "webhookId": "8a08fddb-4a23-5374-a818-bf9a56d43bab",
-      "notes": "curl -F file=@letter.pdf http://127.0.0.1:5678/webhook/briefkasten"
+      "notes": "Needs a Header Auth credential (name X-Briefkasten-Key, a long random value). Without it any web page open in your browser could post here. curl -H 'X-Briefkasten-Key: <value>' -F file=@letter.pdf http://127.0.0.1:5678/webhook/briefkasten",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Briefkasten webhook key (set credentials)"
+        }
+      }
     },
     {
       "parameters": {

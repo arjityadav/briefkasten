@@ -12,7 +12,7 @@ def client(tmp_path, monkeypatch):
     from briefkasten import api
 
     api.settings.cache_clear()
-    return TestClient(api.app)
+    return TestClient(api.app, base_url="http://127.0.0.1:8000")
 
 
 def test_index_and_meta(client):
@@ -231,3 +231,49 @@ def test_demo_only_refuses_notes(demo_client):
     client, _ = demo_client
     job = client.post("/api/demo/finanzamt_bescheid/job?pace=0").json()
     assert client.post(f"/api/jobs/{job['job_id']}/notes", json={"text": "hi"}).status_code == 403
+
+
+def test_full_app_answers_only_to_local_host_names(client, monkeypatch):
+    # DNS rebinding: another site's name pointed at 127.0.0.1 must not reach the API
+    assert client.get("/api/runs", headers={"host": "attacker.example:8000"}).status_code == 400
+    assert client.get("/api/runs", headers={"host": "localhost:8000"}).status_code == 200
+    assert client.get("/api/meta", headers={"host": "briefkasten:8000"}).status_code == 200  # n8n in compose
+
+    from briefkasten import api
+
+    monkeypatch.setenv("BRIEFKASTEN_ALLOWED_HOSTS", "briefkasten.example.org")
+    api.settings.cache_clear()
+    assert client.get("/api/meta", headers={"host": "briefkasten.example.org"}).status_code == 200
+    api.settings.cache_clear()
+
+
+def test_other_websites_cannot_post_to_the_api(client):
+    def post(**headers):
+        return client.post("/api/demo/finanzamt_bescheid/job?pace=0", headers=headers).status_code
+
+    assert post(origin="https://attacker.example") == 403  # a form on another site
+    assert post(origin="null") == 403  # sandboxed frames and file:// pages
+    assert post(**{"sec-fetch-site": "cross-site"}) == 403  # browsers that omit Origin
+    assert post(origin="http://127.0.0.1:8000") == 200  # the app's own UI
+    assert post() == 200  # servers such as n8n send no Origin
+    r = client.post("/api/jobs", data={"text": "Dummy letter"}, headers={"origin": "https://attacker.example"})
+    assert r.status_code == 403
+
+
+def test_demo_runs_under_any_name_but_still_refuses_other_websites(demo_client):
+    client, _ = demo_client
+    assert client.get("/api/meta", headers={"host": "demo.example.org"}).status_code == 200
+    r = client.post("/api/demo/finanzamt_bescheid/job?pace=0", headers={"host": "demo.example.org", "origin": "https://attacker.example"})
+    assert r.status_code == 403
+
+
+def test_event_stream_ignores_a_bad_resume_id(client):
+    import json
+
+    job = client.post("/api/demo/finanzamt_bescheid/job?pace=0").json()
+    full = _events(client, job["job_id"])
+    for bad in ("-1000000000000", "not-a-number"):
+        with client.stream("GET", f"/api/jobs/{job['job_id']}/events", headers={"last-event-id": bad}) as r:
+            assert r.status_code == 200
+            events = [json.loads(line[6:]) for line in r.iter_lines() if line.startswith("data: ")]
+        assert len(events) == len(full)  # replayed once from the start, not over and over

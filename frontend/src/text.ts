@@ -83,7 +83,13 @@ export function daysLabel(days: number | null): string {
 /** An .ics calendar file with one all-day event per deadline, with a reminder 3 days before. */
 export function icsFor(items: { title: string; date: string; description: string }[]): string {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
-  const esc = (s: string) => s.replace(/[\\;,]/g, (c) => `\\${c}`).replace(/\n/g, "\\n");
+  // Every line-break form becomes \n (a bare CR could start a new line in some calendar apps and
+  // inject properties); other control characters are dropped.
+  const esc = (s: string) =>
+    s
+      .replace(/[\\;,]/g, (c) => `\\${c}`)
+      .replace(/\r\n|\r|\n/g, "\\n")
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
   const events = items.map((it, i) => {
     const d = it.date.replace(/-/g, "");
     const next = new Date(`${it.date}T12:00:00`);

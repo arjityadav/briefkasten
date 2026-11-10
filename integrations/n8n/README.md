@@ -30,11 +30,12 @@ docker compose up -d --build
 - n8n: http://127.0.0.1:5678 (create the owner account on first visit)
 - Briefkasten UI: http://127.0.0.1:8000
 
-In n8n: **Workflows → Import from file → `integrations/n8n/briefkasten-inbox.json`**. Then open the three nodes
-whose names say *set credentials* and add:
+In n8n: **Workflows → Import from file → `integrations/n8n/briefkasten-inbox.json`**. Then open the nodes
+that need credentials and add:
 
 | Node | Credential |
 |---|---|
+| Upload (webhook) | Header Auth: name `X-Briefkasten-Key`, value a long random string (`openssl rand -hex 32`). Without it, any web page open in your browser could post to the webhook |
 | New e-mail | IMAP account (a dedicated inbox for official mail works best: forward letters there, or scan to it) |
 | Add to Google Calendar | Google Calendar OAuth2 |
 | E-mail me the summary / failure | SMTP account, and your own address in *To* |
@@ -44,7 +45,7 @@ Set `bundesland` in the two *Analyse* nodes to your state, then activate the wor
 Try it without e-mail:
 
 ```bash
-curl -F file=@src/briefkasten/samples/letters/mahnbescheid.txt http://127.0.0.1:5678/webhook/briefkasten
+curl -H "X-Briefkasten-Key: <your value>" -F file=@src/briefkasten/samples/letters/mahnbescheid.txt http://127.0.0.1:5678/webhook/briefkasten
 ```
 
 ## What Briefkasten provides for this
@@ -65,4 +66,6 @@ envelope date.
 - Self-host n8n (this compose file does). n8n handles the unredacted letter before Briefkasten masks it, so a hosted
   n8n would see your personal data.
 - Both services listen on 127.0.0.1 only. Briefkasten runs in full mode here and has no login: don't publish its port.
+  It only answers to local host names and refuses state-changing requests from other websites, so a page in your
+  browser can't use it. The webhook needs its header key for the same reason.
 - Calendar events and the summary e-mail contain the redacted view (placeholders like `[NAME_1]`), not your real data.

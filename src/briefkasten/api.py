@@ -78,6 +78,47 @@ def offline() -> Briefkasten:
 DEMO_REFUSAL = "This public demo only runs the sample letters. Run Briefkasten yourself to analyse your own mail."
 
 
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "briefkasten"}  # briefkasten: the compose service name n8n calls
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _hostname(netloc: str) -> str:
+    """'127.0.0.1:8000' -> '127.0.0.1', '[::1]:8000' -> '::1', 'localhost' -> 'localhost'."""
+    netloc = netloc.strip().lower()
+    if netloc.startswith("["):
+        return netloc[1:].split("]", 1)[0]
+    return netloc.rsplit(":", 1)[0] if netloc.count(":") == 1 else netloc
+
+
+@app.middleware("http")
+async def origin_guard(request: Request, call_next):
+    """The full app has no login, so only software on this machine may use it.
+
+    Listening on 127.0.0.1 is not enough on its own: the operator's browser is on this machine too.
+    - The Host must be a local name (or one listed in BRIEFKASTEN_ALLOWED_HOSTS). This stops DNS
+      rebinding, where another site's name is pointed at 127.0.0.1 to read the API as "same origin".
+    - A state-changing request sent by a browser must come from this same site. This stops other
+      websites submitting forms to 127.0.0.1 (CSRF). Servers such as n8n send no Origin and pass.
+    The public demo can be served under any name, so it keeps only the second check.
+    """
+    host = request.headers.get("host", "").strip().lower()
+    s = settings()
+    if not s.demo_only and _hostname(host) not in LOCAL_HOSTS | set(s.allowed_hosts):
+        return JSONResponse(
+            {"detail": f"Host '{host}' is not allowed. Add it to BRIEFKASTEN_ALLOWED_HOSTS to serve the app under this name."},
+            status_code=400,
+        )
+    if request.method in UNSAFE_METHODS:
+        origin = request.headers.get("origin")
+        if origin is not None:
+            cross_site = origin.split("://", 1)[-1].rstrip("/").lower() != host  # also catches Origin: null
+        else:
+            cross_site = request.headers.get("sec-fetch-site") == "cross-site"
+        if cross_site:
+            return JSONResponse({"detail": "Requests from other websites are not accepted."}, status_code=403)
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def demo_only_guard(request: Request, call_next):
     """In demo-only mode, refuse uploads before the request body is read, so no real letter is ever received."""
@@ -277,7 +318,10 @@ async def job_events(job_id: str, request: Request) -> StreamingResponse:
     job = jobs.get(job_id)
     if job is None:
         raise HTTPException(404, "Job not found")
-    start = int(request.headers.get("last-event-id", -1)) + 1
+    try:  # resume after the last event the browser saw; anything unusable starts from the beginning
+        start = max(int(request.headers.get("last-event-id", -1)) + 1, 0)
+    except ValueError:
+        start = 0
 
     async def stream():
         index = start

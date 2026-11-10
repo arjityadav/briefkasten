@@ -241,6 +241,15 @@ What it does:
 The full app has no user accounts, so `briefkasten serve` refuses to listen on a non-local address unless
 demo-only mode is on (or you pass `--allow-public` because it sits behind your own login).
 
+Listening on 127.0.0.1 alone doesn't keep other websites out, because your browser runs on the same machine. The
+full app therefore also:
+- answers only to local host names (`127.0.0.1`, `localhost`, `::1`, and `briefkasten` for n8n in compose), which
+  stops DNS-rebinding pages from reading your runs;
+- refuses state-changing requests that a browser sends from another website (checked with `Origin` or
+  `Sec-Fetch-Site`). Servers such as n8n send no `Origin` and are not affected.
+
+Behind your own login proxy, list the extra names: `BRIEFKASTEN_ALLOWED_HOSTS=briefkasten.example.org`.
+
 ```bash
 BRIEFKASTEN_DEMO_ONLY=1 \
 BRIEFKASTEN_IMPRINT_URL=https://example.org/impressum \

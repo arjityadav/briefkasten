@@ -29,6 +29,11 @@ TEXT_TYPES = {".txt", ".md"}
 SUPPORTED = TEXT_TYPES | {".pdf", ".docx", ".eml"} | set(IMAGE_TYPES) | HEIC_TYPES
 MIN_PDF_TEXT = 80  # fewer characters than this means "probably a scan"
 MAX_PDF_PAGES = 4  # scanned pages sent to the vision model per PDF
+# Limits on what an upload expands into: the upload size cap only counts compressed bytes.
+MAX_TEXT_PAGES = 50  # PDF pages read for text (letters are a few pages; this bounds parse work)
+MAX_DOCX_XML = 20 * 1024 * 1024  # decompressed word/document.xml (a zip bomb would be gigabytes)
+MAX_ATTACHMENTS = 12  # attachments read from one e-mail, like MAX_FILES for uploads
+MAX_PAGES = 24  # page images transcribed per request, across all files and attachments
 IMAGES_PER_CALL = 4  # pages per reader call (vision models take a few images at once)
 MAX_IMAGE_SIDE = 2048  # photos are downscaled to this before upload (when Pillow is installed)
 MAX_RAW_IMAGE = 4 * 1024 * 1024  # without Pillow, larger images are refused rather than rejected by the API
@@ -57,7 +62,8 @@ def _pdf_text(data: bytes) -> str:
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(data))
-    return "\n\n".join((page.extract_text() or "") for page in reader.pages)
+    pages = reader.pages
+    return "\n\n".join((pages[i].extract_text() or "") for i in range(min(len(pages), MAX_TEXT_PAGES)))
 
 
 def _pdf_images(data: bytes) -> list[Image]:
@@ -70,8 +76,11 @@ def _pdf_images(data: bytes) -> list[Image]:
     pdf = pdfium.PdfDocument(data)
     images = []
     for i in range(min(len(pdf), MAX_PDF_PAGES)):
+        page = pdf[i]
+        # The page size comes from the PDF itself: cap the bitmap at MAX_IMAGE_SIDE instead of trusting it.
+        scale = min(2.0, MAX_IMAGE_SIDE / max(*page.get_size(), 1.0))
         buf = io.BytesIO()
-        pdf[i].render(scale=2).to_pil().save(buf, format="PNG")
+        page.render(scale=scale).to_pil().save(buf, format="PNG")
         images.append(Image("image/png", buf.getvalue()))
     return images
 
@@ -80,8 +89,16 @@ def _docx_text(data: bytes) -> str:
     """Paragraphs and table rows of a Word document, in reading order (stdlib only)."""
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as z:
-            root = ElementTree.fromstring(z.read("word/document.xml"))
-    except (zipfile.BadZipFile, KeyError, ElementTree.ParseError) as e:
+            # Read at most the limit, whatever the archive claims: the stored size can be forged.
+            with z.open("word/document.xml") as member:
+                xml = member.read(MAX_DOCX_XML + 1)
+    except (zipfile.BadZipFile, KeyError) as e:
+        raise UnsupportedDocument("This .docx file could not be read.") from e
+    if len(xml) > MAX_DOCX_XML:
+        raise UnsupportedDocument("This .docx file is too large once unpacked.")
+    try:
+        root = ElementTree.fromstring(xml)
+    except ElementTree.ParseError as e:
         raise UnsupportedDocument("This .docx file could not be read.") from e
 
     def para(p) -> str:
@@ -175,7 +192,10 @@ def _email_parts(data: bytes, depth: int) -> list[str | list[Image]]:
     parts: list[str | list[Image]] = [f"E-Mail\n{head}\n\n{body.strip()}"]
     if depth > 0:  # attachments of attached e-mails are not unpacked further
         return parts
-    for att in msg.iter_attachments():
+    attachments = list(msg.iter_attachments())
+    if len(attachments) > MAX_ATTACHMENTS:
+        raise UnsupportedDocument(f"This e-mail has {len(attachments)} attachments; at most {MAX_ATTACHMENTS} are read.")
+    for att in attachments:
         name = att.get_filename() or ""
         if Path(name).suffix.lower() not in SUPPORTED:
             parts.append(f"[Anhang nicht gelesen: {name or att.get_content_type()}]")
@@ -202,6 +222,10 @@ def load_documents(files: list[tuple[bytes, str]], reader: ImageReader | None, t
                 parts[-1] = parts[-1] + p  # consecutive pages are transcribed together
             else:
                 parts.append(p)
+
+    pages = sum(len(p) for p in parts if isinstance(p, list))
+    if pages > MAX_PAGES:
+        raise UnsupportedDocument(f"{pages} pages to read; at most {MAX_PAGES} pages per document. Upload fewer pages.")
 
     texts = []
     for p in parts:

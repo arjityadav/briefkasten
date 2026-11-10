@@ -74,6 +74,7 @@ class Settings:
     demo_only: bool = False  # public demo: sample letters only, no uploads, nothing stored on disk
     imprint_url: str = ""  # Impressum, linked in the web app footer
     privacy_url: str = ""  # privacy policy (Datenschutzerklärung), linked in the footer
+    allowed_hosts: list[str] = field(default_factory=list)  # extra Host names the full app answers to (e.g. behind a proxy)
 
     @classmethod
     def from_env(cls, **overrides) -> "Settings":
@@ -112,6 +113,7 @@ class Settings:
             demo_only=env.get("BRIEFKASTEN_DEMO_ONLY", "").strip().lower() in ("1", "true", "yes", "on"),
             imprint_url=env.get("BRIEFKASTEN_IMPRINT_URL", ""),
             privacy_url=env.get("BRIEFKASTEN_PRIVACY_URL", ""),
+            allowed_hosts=[h.strip().lower() for h in env.get("BRIEFKASTEN_ALLOWED_HOSTS", "").split(",") if h.strip()],
         )
         for key, value in overrides.items():
             if value is not None:

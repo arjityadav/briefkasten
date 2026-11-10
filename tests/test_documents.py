@@ -1,5 +1,6 @@
 from datetime import date
 
+import io
 import pytest
 
 from briefkasten.config import Settings
@@ -241,3 +242,74 @@ def _image_obj():
     from briefkasten.llm import Image
 
     return Image("image/png", _png(1))
+
+
+def test_docx_zip_bomb_is_refused_before_parsing():
+    import zipfile
+
+    from briefkasten import documents
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("word/document.xml", "<w:p/>" * (documents.MAX_DOCX_XML // 6 + 10))
+    assert len(buf.getvalue()) < 200_000  # tiny upload, over 20 MB unpacked
+    with pytest.raises(UnsupportedDocument, match="too large"):
+        load_document(buf.getvalue(), "bomb.docx", None, [])
+
+
+def test_email_attachments_and_total_pages_are_capped():
+    from email.message import EmailMessage
+
+    from briefkasten import documents
+
+    msg = EmailMessage()
+    msg["From"] = "amt@example.org"
+    msg.set_content("Siehe Anhang.")
+    for i in range(documents.MAX_ATTACHMENTS + 1):
+        msg.add_attachment(_png(i), maintype="image", subtype="png", filename=f"p{i}.png")
+    with pytest.raises(UnsupportedDocument, match="attachments"):
+        load_document(msg.as_bytes(), "mail.eml", None, [])
+
+    calls = []
+    pages = [(_png(i), f"p{i}.png") for i in range(documents.MAX_PAGES + 1)]
+    with pytest.raises(UnsupportedDocument, match="pages"):
+        documents.load_documents(pages, lambda imgs, trace: calls.append(imgs) or "x", [])
+    assert not calls  # refused before any OCR or vision call
+
+
+def test_pdf_text_reads_a_bounded_number_of_pages(monkeypatch):
+    from pypdf import PageObject, PdfWriter
+
+    from briefkasten import documents
+
+    w = PdfWriter()
+    for _ in range(documents.MAX_TEXT_PAGES + 30):
+        w.add_blank_page(100, 100)
+    buf = io.BytesIO()
+    w.write(buf)
+    read = []
+    monkeypatch.setattr(PageObject, "extract_text", lambda self, *a, **k: read.append(1) or "")
+    documents._pdf_text(buf.getvalue())
+    assert len(read) == documents.MAX_TEXT_PAGES
+
+
+def test_scanned_pdf_pages_are_rendered_within_the_size_limit(monkeypatch):
+    import sys
+    import types
+
+    from briefkasten import documents
+
+    scales = []
+
+    class Page:  # a page claiming 14400 x 14400 pt, which at scale 2 would be a ~2.5 GB bitmap
+        def get_size(self):
+            return (14400.0, 14400.0)
+
+        def render(self, scale):
+            scales.append(scale)
+            return types.SimpleNamespace(to_pil=lambda: types.SimpleNamespace(save=lambda buf, format: buf.write(b"png")))
+
+    fake = types.SimpleNamespace(PdfDocument=lambda data: [Page()])
+    monkeypatch.setitem(sys.modules, "pypdfium2", fake)
+    documents._pdf_images(b"%PDF")
+    assert 14400 * scales[0] <= documents.MAX_IMAGE_SIDE

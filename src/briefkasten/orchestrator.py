@@ -76,7 +76,9 @@ class Briefkasten:
     def process_files(self, files: list[tuple[bytes, str]], progress: Progress | None = None, **kwargs) -> RunState:
         """Several files that make up one document, e.g. one photo per page, in order."""
         name = files[0][1] if len(files) == 1 else f"{files[0][1]} (+{len(files) - 1} more)"
-        with self._trace(name, kwargs.get("session_id")):  # intake (OCR, vision) belongs to the same trace
+        # The trace gets a neutral name: file names often contain the recipient's name or tax number.
+        trace_name = "1 document" if len(files) == 1 else f"{len(files)} documents"
+        with self._trace(trace_name, kwargs.get("session_id")):  # intake (OCR, vision) belongs to the same trace
             return self._process_files(files, name, progress, **kwargs)
 
     def _process_files(self, files: list[tuple[bytes, str]], name: str, progress: Progress | None, **kwargs) -> RunState:
@@ -109,7 +111,7 @@ class Briefkasten:
 
         With tracing on, the run is one Langfuse trace (grouped by `session_id`, e.g. an eval run).
         """
-        with self._trace(source_name, session_id):
+        with self._trace("letter", session_id):  # not source_name: it can carry personal data (see process_files)
             return self._process(text, source_name, received_on, reply_intent, today, extra_trace, progress, image_reader)
 
     def _trace(self, name: str, session_id: str | None):
