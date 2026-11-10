@@ -8,6 +8,17 @@ actual legal rules (including weekends and your Bundesland's public holidays), c
 letter, and drafts a formal German reply that you approve before it goes anywhere. It also explains everyday
 documents: payslips (with the arithmetic checked), contracts (with a cancel-by date) and forms to fill in.
 
+> [!WARNING]
+> **Use at your own risk.**
+> - **Personal data:** names, addresses, IBANs and tax numbers are masked on your machine before any text goes to
+>   an AI model. Masking is automatic but **best effort**: rules (plus the optional Presidio layer) can miss data,
+>   for example a name that only appears in running text, an unusual number format, or a scan the OCR misread.
+>   Anything missed is sent to the model provider.
+> - **For the most privacy, use a local model.** With Ollama ([fully local setup](#quick-start)) and the default
+>   local OCR for scans, nothing leaves your machine. With Groq, NVIDIA or Anthropic, the masked text goes to
+>   that provider.
+> - **Not legal or tax advice.** Check every deadline and every reply yourself before you rely on it or send it.
+
 ## What it handles
 
 | | Examples | What you get |
