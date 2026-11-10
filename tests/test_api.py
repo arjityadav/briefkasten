@@ -277,3 +277,14 @@ def test_event_stream_ignores_a_bad_resume_id(client):
             assert r.status_code == 200
             events = [json.loads(line[6:]) for line in r.iter_lines() if line.startswith("data: ")]
         assert len(events) == len(full)  # replayed once from the start, not over and over
+
+
+def test_notes_sent_during_the_run_are_kept_with_it(client):
+    job = client.post("/api/demo/finanzamt_bescheid/job?pace=0.3").json()  # a few seconds long
+    r = client.post(f"/api/jobs/{job['job_id']}/notes", json={"text": "Received by n8n, analysis started"})
+    assert r.status_code == 200 and not r.json()["saved_with_run"]  # still running
+    _events(client, job["job_id"])  # wait for the end
+    status = client.get(f"/api/jobs/{job['job_id']}").json()
+    run = client.get(f"/api/runs/{status['run_id']}").json()
+    assert [n["text"] for n in run["notes"]] == ["Received by n8n, analysis started"]
+    assert [n["text"] for n in status["run"]["notes"]] == ["Received by n8n, analysis started"]

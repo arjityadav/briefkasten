@@ -26,6 +26,10 @@ class Job:
         self.created = time.monotonic()
         self._t0 = time.perf_counter()
         self._lock = threading.Lock()
+        # Automation notes (api.add_note) and the end of the run both write notes into the stored run;
+        # this lock keeps one from overwriting the other.
+        self.notes_lock = threading.Lock()
+        self.run_id: str | None = None  # set once the run is stored with its notes
 
     def emit(self, type: str, **data) -> None:
         with self._lock:

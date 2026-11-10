@@ -240,7 +240,7 @@ async def create_job(
             return bk.process_files(files, progress=progress, **kwargs)
         return bk.process(text, source_name="pasted-letter.txt", progress=progress, **kwargs)
 
-    return {"job_id": jobs.start(work).id}
+    return {"job_id": jobs.start(_keep_notes(work)).id}
 
 
 @app.post("/api/demo/{name}/job")
@@ -250,7 +250,7 @@ def create_demo_job(name: str, pace: float = DEMO_PACE) -> dict:
         raise HTTPException(404, f"Unknown demo. Available: {', '.join(available_replays())}")
     letter, intent, router = load_replay(name, delay=min(max(pace, 0.0), 3.0))
     bk = Briefkasten(router, replace(settings(), redact_terms=DEMO_REDACT_TERMS), store())
-    return {"job_id": jobs.start(lambda progress: bk.process(letter, source_name=f"{name}.txt", reply_intent=intent, progress=progress)).id}
+    return {"job_id": jobs.start(_keep_notes(lambda progress: bk.process(letter, source_name=f"{name}.txt", reply_intent=intent, progress=progress))).id}
 
 
 @app.get("/api/jobs/{job_id}")
@@ -286,6 +286,23 @@ class NoteBody(BaseModel):
     source: str = Field("n8n", min_length=1, max_length=20)
 
 
+def _keep_notes(work):
+    """Store notes that arrived while the run was going (e.g. n8n's "received") with the finished run."""
+
+    def run(progress):
+        state = work(progress)
+        job = progress.job
+        with job.notes_lock:
+            early = [e for e in job.since(0)[0] if e["type"] == "note"]
+            if early:
+                state.notes += [AutomationNote(source=e["source"], text=e["text"], at=datetime.now()) for e in early]
+                store().save(state)
+            job.run_id = state.run_id  # from now on, add_note saves into the stored run itself
+        return state
+
+    return run
+
+
 @app.post("/api/jobs/{job_id}/notes")
 def add_note(job_id: str, body: NoteBody) -> dict:
     """A status report from an automation (e.g. n8n: "2 deadlines added to Google Calendar").
@@ -299,14 +316,14 @@ def add_note(job_id: str, body: NoteBody) -> dict:
     events, _ = job.since(0)
     if sum(e["type"] == "note" for e in events) >= MAX_NOTES:
         raise HTTPException(429, f"At most {MAX_NOTES} notes per run")
-    job.emit("note", source=body.source, text=body.text)
-    done = next((e for e in events if e["type"] == "done"), None)
-    if done:
-        st = store()
-        state = st.load(done["run"]["run_id"])
-        state.notes.append(AutomationNote(source=body.source, text=body.text, at=datetime.now()))
-        st.save(state)
-    return {"ok": True, "saved_with_run": bool(done)}
+    with job.notes_lock:
+        job.emit("note", source=body.source, text=body.text)
+        if job.run_id:  # the run is stored: add the note to it; otherwise _keep_notes picks it up
+            st = store()
+            state = st.load(job.run_id)
+            state.notes.append(AutomationNote(source=body.source, text=body.text, at=datetime.now()))
+            st.save(state)
+    return {"ok": True, "saved_with_run": bool(job.run_id)}
 
 
 @app.get("/api/jobs/{job_id}/events")
