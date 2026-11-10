@@ -142,7 +142,7 @@ def _dump(obj) -> str:
 class SupervisorAgent(Agent):
     name = "supervisor"
     tier = "smart"
-    max_tokens = 500
+    max_tokens = 1200
     max_steps = 12
 
     def __init__(

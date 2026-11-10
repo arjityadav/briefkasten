@@ -126,8 +126,21 @@ class OpenAICompatLLM:
             if reason is None:
                 raise
             return ChatResult(text="", tool_calls=[], model=self.model, rejected=reason)
-        msg = ((resp.get("choices") or [{}])[0]).get("message") or {}
+        choice = (resp.get("choices") or [{}])[0]
+        msg = choice.get("message") or {}
         usage = resp.get("usage") or {}
+        if choice.get("finish_reason") == "length" and not msg.get("tool_calls"):
+            # The reply hit max_tokens mid-answer, so any tool call in it is lost. Tell the agent why,
+            # instead of letting the loop count it as "answered in prose".
+            return ChatResult(
+                text="",
+                tool_calls=[],
+                model=resp.get("model", self.model),
+                input_tokens=usage.get("prompt_tokens", 0),
+                output_tokens=usage.get("completion_tokens", 0),
+                rejected=f"Your reply was cut off at the {max_tokens}-token limit before the tool call was complete. "
+                "Call the tool again with shorter text fields.",
+            )
         calls = []
         for i, c in enumerate(msg.get("tool_calls") or []):
             fn = c.get("function") or {}

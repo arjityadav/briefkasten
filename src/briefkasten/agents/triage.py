@@ -29,7 +29,7 @@ Guidance:
 class TriageAgent(Agent):
     name = "triage"
     tier = "fast"
-    max_tokens = 400
+    max_tokens = 800
     max_steps = 4
 
     def run(self, letter: str, trace: list[TraceEvent]) -> Triage:

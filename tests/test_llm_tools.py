@@ -354,3 +354,15 @@ def test_pacing_waits_only_for_the_missing_tokens(monkeypatch):
     monkeypatch.setattr(http.time, "sleep", sleeps.append)
     p.wait(2000)
     assert 7 < sleeps[0] < 8  # 1,000 missing tokens, not the full 50 s
+
+
+def test_reply_cut_off_at_the_token_limit_is_fed_back(monkeypatch):
+    from briefkasten.llm import Message, ToolSpec, openai_compat as openai_mod
+
+    def fake_post(url, payload, headers, **kw):
+        return {"model": "m", "usage": {"completion_tokens": 1200}, "choices": [{"finish_reason": "length", "message": {"content": "{\"summary_en\": \"This letter"}}]}
+
+    monkeypatch.setattr(openai_mod, "post_json", fake_post)
+    llm = openai_mod.OpenAICompatLLM("m", "https://x/v1")
+    res = llm.chat(system="s", messages=[Message("user", text="hi")], tools=[ToolSpec("submit", "d", {"type": "object"})], agent="explainer", max_tokens=1200)
+    assert res.rejected and "cut off" in res.rejected and not res.tool_calls

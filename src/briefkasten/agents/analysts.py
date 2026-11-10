@@ -55,7 +55,7 @@ Rules:
 class _AnalystAgent(Agent):
     system: str = ""
     output: type
-    max_tokens = 2000
+    max_tokens = 3000
     max_steps = 6
     max_rejections = 1
 
