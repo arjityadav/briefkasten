@@ -1,5 +1,0 @@
-[  995989ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/demo/finanzamt_bescheid/job?pace=0.7:1
-[ 1006122ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/demo/handyvertrag/job?pace=0.7:1
-[ 1008238ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/demo/handyvertrag/job?pace=0.7:1
-[ 1011454ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/demo/vermieter_nebenkosten/job?pace=0.7:1
-[ 1013505ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/demo/finanzamt_bescheid/job?pace=0.7:1

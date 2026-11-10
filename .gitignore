@@ -9,3 +9,4 @@ dist/
 build/
 frontend/node_modules/
 src/briefkasten/web/dist/
+.playwright-mcp/
