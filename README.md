@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/arjityadav/briefkasten/actions/workflows/ci.yml/badge.svg)](https://github.com/arjityadav/briefkasten/actions/workflows/ci.yml)
 
+https://github.com/user-attachments/assets/5eac694f-9db7-44b3-93d2-70c41590b574
+
 **A multi-agent assistant for official German mail.** Upload a letter from the Finanzamt, your Krankenkasse,
 the Jobcenter or your landlord. Briefkasten explains it in plain English, works out every deadline with the
 actual legal rules (including weekends and your Bundesland's public holidays), checks its own work against the
